@@ -66,10 +66,18 @@ class Database:
         self._migrate()
 
     def _migrate(self):
-        """存量库增量迁移（新增列）。"""
-        cols = [r[1] for r in self.conn.execute("PRAGMA table_info(candidates)")]
-        if "media" not in cols:
+        """存量库迁移：
+        1. candidates 补充 media 列（早期版本缺失）
+        2. assessments 旧版用 tourism_related/type 列 → 新版 keep/category（重建表，当日评分无历史价值）
+        """
+        cand_cols = [r[1] for r in self.conn.execute("PRAGMA table_info(candidates)")]
+        if "media" not in cand_cols:
             self.conn.execute("ALTER TABLE candidates ADD COLUMN media TEXT")
+            self.conn.commit()
+        assess_cols = {r[1] for r in self.conn.execute("PRAGMA table_info(assessments)")}
+        if "keep" not in assess_cols:
+            logger.warning("检测到旧版 assessments 表结构，重建迁移（keep/category）")
+            self.conn.executescript("DROP TABLE IF EXISTS assessments;" + SCHEMA)
             self.conn.commit()
 
     def close(self):
