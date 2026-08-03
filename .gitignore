@@ -12,3 +12,6 @@ __pycache__/
 venv/
 *.egg-info/
 .pytest_cache/
+
+# GitHub Pages 构建产物（由 CI 生成）
+_site/

@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>✈️ 出入境旅游弱信号日报</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #f2f6fb;
+            --card-bg: #ffffff;
+            --text: #1a2639;
+            --text-secondary: #5a6a80;
+            --accent: #1e6fd9;
+            --accent-light: #e8f1fd;
+            --tag-bg: #e8f1fd;
+            --tag-text: #1e6fd9;
+            --border: #dce5f0;
+            --shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+            --radius: 12px;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: "Noto Sans SC", "Microsoft YaHei", sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.7;
+        }
+        header {
+            background: linear-gradient(135deg, #1e6fd9, #4a9bef);
+            color: #fff;
+            padding: 2rem 1.5rem;
+            text-align: center;
+        }
+        header h1 { font-size: 1.6rem; margin-bottom: 0.4rem; }
+        header p { opacity: 0.9; font-size: 0.92rem; }
+        .layout {
+            display: flex;
+            gap: 1.2rem;
+            max-width: 1200px;
+            margin: 1.2rem auto;
+            padding: 0 1rem;
+            align-items: flex-start;
+        }
+        aside {
+            flex: 0 0 240px;
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            padding: 1rem;
+            position: sticky;
+            top: 1rem;
+            max-height: calc(100vh - 2rem);
+            overflow-y: auto;
+        }
+        aside h2 {
+            font-size: 0.95rem;
+            color: var(--text-secondary);
+            margin-bottom: 0.6rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid var(--border);
+        }
+        aside .list-item {
+            display: block;
+            width: 100%;
+            text-align: left;
+            background: none;
+            border: none;
+            padding: 0.5rem 0.6rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.88rem;
+            color: var(--text);
+            margin-bottom: 0.2rem;
+            transition: background 0.15s;
+        }
+        aside .list-item:hover { background: var(--accent-light); }
+        aside .list-item.active { background: var(--accent); color: #fff; }
+        main {
+            flex: 1;
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            padding: 1.6rem 1.8rem;
+            min-height: 70vh;
+        }
+        main h1 {
+            font-size: 1.4rem;
+            border-bottom: 2px solid var(--accent);
+            padding-bottom: 0.5rem;
+            margin-bottom: 1rem;
+        }
+        main h2 {
+            font-size: 1.1rem;
+            color: var(--accent);
+            margin: 1.2rem 0 0.5rem;
+            padding-left: 0.6rem;
+            border-left: 4px solid var(--accent);
+        }
+        main h3 { font-size: 1rem; margin: 1rem 0 0.4rem; }
+        main ul { padding-left: 1.4rem; }
+        main li { margin-bottom: 0.4rem; }
+        main a { color: var(--accent); text-decoration: none; }
+        main a:hover { text-decoration: underline; }
+        main blockquote {
+            border-left: 3px solid var(--border);
+            padding-left: 0.8rem;
+            color: var(--text-secondary);
+            margin: 0.6rem 0;
+        }
+        .loading, .empty { color: var(--text-secondary); text-align: center; padding: 3rem 0; }
+        footer {
+            text-align: center;
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+            padding: 1.5rem 0 2.5rem;
+        }
+        @media (max-width: 768px) {
+            .layout { flex-direction: column; }
+            aside { flex: auto; position: static; max-height: 200px; }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>✈️ 出入境旅游弱信号日报</h1>
+        <p>从全球网络信息中自动发现具有趋势性与苗头性的出入境旅游信息 · 每日 07:00 更新</p>
+    </header>
+
+    <div class="layout">
+        <aside>
+            <h2>📅 历史日报</h2>
+            <div id="report-list"><div class="loading">加载中...</div></div>
+        </aside>
+        <main id="report-content">
+            <div class="loading">选择左侧日期查看日报</div>
+        </main>
+    </div>
+
+    <footer>
+        数据来源：Google News（含 Quora/X/Facebook/YouTube/微博/小红书 社交定向）· 由 LLM 五维弱信号评分生成 · 仅供研究参考
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
+    <script>
+        const REPO = "shipsw/tourism-weak-signal";
+        const DIR = "outputs/reports";
+
+        async function loadReportList() {
+            const box = document.getElementById("report-list");
+            try {
+                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${DIR}`);
+                if (!res.ok) throw new Error("HTTP " + res.status);
+                const files = await res.json();
+                const mds = files
+                    .filter(f => f.name.endsWith(".md") && f.name !== "README.md")
+                    .sort((a, b) => b.name.localeCompare(a.name));
+                if (mds.length === 0) {
+                    box.innerHTML = '<div class="empty">暂无日报</div>';
+                    return;
+                }
+                box.innerHTML = "";
+                mds.forEach(f => {
+                    const btn = document.createElement("button");
+                    btn.className = "list-item";
+                    btn.textContent = f.name.replace(".md", "");
+                    btn.onclick = () => showReport(f.name, btn);
+                    box.appendChild(btn);
+                });
+                // 默认显示最新一期
+                showReport(mds[0].name, box.firstChild);
+            } catch (e) {
+                box.innerHTML = `<div class="empty">加载失败：${e.message}</div>`;
+            }
+        }
+
+        async function showReport(name, btn) {
+            document.querySelectorAll(".list-item").forEach(b => b.classList.remove("active"));
+            if (btn) btn.classList.add("active");
+            const main = document.getElementById("report-content");
+            main.innerHTML = '<div class="loading">加载中...</div>';
+            try {
+                const res = await fetch(`./reports/${name}`);
+                if (!res.ok) throw new Error("HTTP " + res.status);
+                const md = await res.text();
+                main.innerHTML = marked.parse(md);
+            } catch (e) {
+                main.innerHTML = `<div class="empty">加载失败：${e.message}</div>`;
+            }
+        }
+
+        loadReportList();
+    </script>
+</body>
+</html>

@@ -20,6 +20,8 @@ on:
 
 permissions:
   contents: write           # 允许提交日报回仓库
+  pages: write              # 部署 GitHub Pages（网页版日报）
+  id-token: write           # Pages 部署所需 OIDC
 
 concurrency:
   group: daily-report
@@ -29,6 +31,9 @@ jobs:
   daily-report:
     runs-on: ubuntu-latest
     timeout-minutes: 20     # 单次流水线约 3~5 分钟，留足余量
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     env:
       LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}
       LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
@@ -85,6 +90,23 @@ jobs:
             git commit -m "docs: 日报 $(date -u +%Y-%m-%d)"
             git push
           fi
+
+      - name: 准备 Pages 部署文件
+        run: |
+          mkdir -p _site
+          cp web/index.html _site/
+          mkdir -p _site/reports
+          cp outputs/reports/*.md _site/reports/
+          echo "部署文件: $(ls _site _site/reports)"
+
+      - name: 上传 Pages 工件
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: "_site"
+
+      - name: 部署到 GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
 
       - name: 失败时输出日志尾部（便于排查）
         if: failure()
