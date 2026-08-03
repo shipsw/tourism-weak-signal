@@ -1,0 +1,92 @@
+# 每日出入境旅游弱信号日报
+#
+# 调度：GitHub Actions schedule 使用 UTC 时区。
+#   cron '0 23 * * *' = 每天 UTC 23:00 = 北京时间次日 07:00
+#   （GitHub 对 schedule 有 5~15 分钟延迟，实际约 07:10 左右开始运行）
+#
+# 产物持久化：每次运行后把 SQLite 数据库 + 日报 commit 回仓库，
+#   下次运行前 checkout 拿到历史数据，实现"轻量数据仓库"效果。
+#
+# 需要的仓库 Secrets（Settings → Secrets and variables → Actions）：
+#   LLM_BASE_URL / LLM_API_KEY / LLM_MODEL   （必填）
+#   REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET  （可选，配了才有 Reddit 数据）
+
+name: 每日弱信号日报
+
+on:
+  schedule:
+    - cron: '0 23 * * *'   # 北京时间每天 07:00
+  workflow_dispatch: {}     # 支持手动触发（用于补跑/测试）
+
+permissions:
+  contents: write           # 允许提交日报回仓库
+
+concurrency:
+  group: daily-report
+  cancel-in-progress: false
+
+jobs:
+  daily-report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20     # 单次流水线约 3~5 分钟，留足余量
+    env:
+      LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}
+      LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+      LLM_MODEL: ${{ secrets.LLM_MODEL }}
+      REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
+      REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
+
+    steps:
+      - name: 检出代码（含历史 DB）
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0    # 完整历史，保证拿到上次提交的 tourism_signal.db
+
+      - name: 设置 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 安装依赖
+        run: pip install -r requirements.txt
+
+      - name: 写入 .env（来自 Secrets）
+        run: |
+          cat > .env <<EOF
+          LLM_BASE_URL=${LLM_BASE_URL}
+          LLM_API_KEY=${LLM_API_KEY}
+          LLM_MODEL=${LLM_MODEL}
+          REDDIT_CLIENT_ID=${REDDIT_CLIENT_ID}
+          REDDIT_CLIENT_SECRET=${REDDIT_CLIENT_SECRET}
+          EOF
+          # 校验必填密钥
+          if [ -z "${LLM_API_KEY}" ] || [ -z "${LLM_BASE_URL}" ] || [ -z "${LLM_MODEL}" ]; then
+            echo "::error::缺少 LLM_BASE_URL / LLM_API_KEY / LLM_MODEL Secrets，请在仓库 Settings 中配置"
+            exit 1
+          fi
+
+      - name: 运行日报流水线
+        run: |
+          cd src
+          python -m tourism_signal.main
+        env:
+          # 输出到终端（GITHUB_ACTIONS 环境无 tty，stream 日志即可）
+          PYTHONUNBUFFERED: 1
+
+      - name: 提交日报与数据回仓库
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # 只提交数据与日报（outputs/logs 被 .gitignore 排除）
+          git add -f outputs/data outputs/reports
+          if git diff --cached --quiet; then
+            echo "今日无变更（可能已运行过或没有新内容）"
+          else
+            git commit -m "docs: 日报 $(date -u +%Y-%m-%d)"
+            git push
+          fi
+
+      - name: 失败时输出日志尾部（便于排查）
+        if: failure()
+        run: |
+          tail -50 outputs/logs/app.log 2>/dev/null || echo "无日志文件"
