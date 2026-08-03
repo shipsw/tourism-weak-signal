@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from typing import Any
 
@@ -18,10 +18,20 @@ RECENT_WINDOW_DAYS = 7  # 只保留近 7 天（尽力解析，解析失败则保
 def _parse_time(s: str):
     if not s:
         return None
+    s = s.strip()
+    # RFC822（Google News 等）：Wed, 29 Jul 2026 21:05:53 GMT
     try:
         return parsedate_to_datetime(s)
     except (TypeError, ValueError):
-        return None
+        pass
+    # ISO/纯数字（热搜榜等）：2026-08-03 17:51:00 或 2026-08-03T17:51:00
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+        try:
+            dt = datetime.strptime(s, fmt)
+            return dt.replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+    return None
 
 
 def _recent(item: NewsItem) -> bool:

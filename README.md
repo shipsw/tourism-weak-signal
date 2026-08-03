@@ -1,6 +1,6 @@
-# 出入境旅游弱信号发现与研判 Agent
+# 旅游服务质量苗头问题研判 Agent
 
-> Inbound & Outbound Tourism Weak Signal Intelligence Agent
+> Tourism Service Quality Weak Signal Intelligence Agent
 
 从全球网络信息中，自动发现**尚未形成热点、但具有趋势性与苗头性**的出入境旅游相关信息，为文旅研究人员提供每日观察素材。核心是 **AI 研究助理**，而非舆情监测系统。
 

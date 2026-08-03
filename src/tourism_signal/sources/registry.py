@@ -7,12 +7,14 @@ from ..config import Config
 from .base import BaseSource
 from .domestic import RSSSource
 from .google_news import GoogleNewsSource
+from .hotsearch import HotSearchSource
 from .reddit import RedditSource
 
 SOURCE_REGISTRY: dict[str, type[BaseSource]] = {
     "google_news": GoogleNewsSource,
     "reddit": RedditSource,
     "domestic": RSSSource,
+    "hotsearch": HotSearchSource,
 }
 
 

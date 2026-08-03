@@ -21,25 +21,26 @@ from ..utils import truncate
 
 logger = logging.getLogger("tourism_signal.agents.weak_signal")
 
-THEME_SYSTEM = """你是出入境旅游研究助理。为每条出入境旅游信息抽取一个简短的主题标签（中文，≤12字），并给出一句话摘要。
-主题标签应概括"发生了什么"：如「免签政策调整」「外国游客抱怨支付不便」「某航线开通」。
+THEME_SYSTEM = """你是旅游服务质量研究助理，服务于文旅部研究部门。为每条旅游服务质量相关信息抽取一个简短的主题标签（中文，≤12字），并给出一句话摘要。
+主题标签应概括"发生了什么问题"：如「印度游客不文明行为」「酒店拒收外卡」「景区强制消费」「境外游客支付困扰」。
 多条信息如果说的是同一件事/同一类问题，应使用相同或高度相近的主题标签。
 
 输出 JSON（必须包含 "themes" 数组）：
 {"themes": [{"id": "<输入id>", "theme": "主题标签", "summary": "一句话摘要"}]}"""
 
-SCORE_SYSTEM = """你是出入境旅游弱信号研判专家。对一组相关信息进行五维评分，每维 0-10 分：
+SCORE_SYSTEM = """你是旅游服务质量弱信号研判专家，服务于文旅部研究部门。对一组相关信息进行五维评分，每维 0-10 分：
 
-1. 新颖性 novelty：是否出现新的趋势、变化或苗头（不是已知热点）
-2. 重复性 repetition：是否多个来源出现类似信息（信息量=条数）
-3. 扩散性 diffusion：是否跨平台、跨地区、跨国传播
-4. 影响性 impact：是否可能影响出入境旅游发展（政策/市场/体验层面）
-5. 持续性 sustainability：是否可能持续发展、演变
+1. 新颖性 novelty：是否为新出现的趋势、变化或苗头（不是已知热点）
+2. 共性 repetition：是否多个来源出现类似问题（信息量=条数；单条孤立事件价值低）
+3. 扩散性 diffusion：是否跨平台、跨地区、跨国传播（境内+境外都出现更有价值）
+4. 影响性 impact：是否可能影响旅游服务质量与游客体验（政策/市场/舆论层面）
+5. 持续性 sustainability：问题是否可能持续发展、演变成更大舆情
 
 评分原则：
 - 单条孤立投诉价值低（novelty 可高但 repetition/impact 低）
-- 多个国家游客、多个平台出现类似体验问题 → repetition/impact 显著提高
-- 政策类信号通常 impact 高
+- 多个国家游客、多个平台出现类似体验问题 → repetition/diffusion 显著提高
+- 文化冲突、服务弱项、误解等"隐含问题"（尚非舆情热点）尤其值得关注
+- 已成型的舆情热点（主流媒体集中报道多日）应降分，避免与舆情团队重复
 
 我将提供每组信息的客观统计（条数/来源数/语言数）和内容列表。
 输出 JSON（必须包含 "groups" 数组，数组长度与输入一致）：
@@ -122,9 +123,9 @@ def _group(cands: list[FilteredCandidate], themes: dict[str, dict]) -> list[Sign
         sources = {m.item.source.split(":")[0] for m in members}
         languages = {m.item.language for m in members}
         directions = {m.result.direction for m in members}
-        types = {m.result.type for m in members}
+        categories = {m.result.category for m in members}
         social = any(
-            m.item.source.startswith(("google_news_social", "reddit"))
+            m.item.source.startswith(("google_news_social", "reddit", "hotsearch"))
             for m in members
         )
         groups.append(
@@ -139,7 +140,7 @@ def _group(cands: list[FilteredCandidate], themes: dict[str, dict]) -> list[Sign
                     "languages": sorted(languages),
                     "n_directions": len(directions),
                     "directions": sorted(directions),
-                    "types": sorted(t for t in types if t),
+                    "categories": sorted(c for c in categories if c),
                     "social": social,
                 },
             )

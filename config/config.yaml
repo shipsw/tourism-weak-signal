@@ -1,5 +1,8 @@
 # =====================================================
-# 出入境旅游弱信号发现与研判 Agent — 配置文件
+# 旅游服务质量苗头问题研判 Agent — 配置文件
+#
+# 客户：文旅部研究部门（已有舆情团队报热点，本系统只报热点之外的苗头问题）
+# 聚焦：出入境旅游服务质量问题（不文明行为 / 服务弱项 / 文化冲突 / 误解）
 # =====================================================
 
 llm:
@@ -18,43 +21,53 @@ sources:
     max_results: 25       # 每个关键词取前 N 条
     lookback_days: 3      # 只取最近 N 天的内容（自动追加 after: 时间窗口）
     queries:
-      # 中文组：覆盖入境游 / 出境游 / 政策 / 体验
-      - { lang: "zh-CN", q: "入境旅游 免签" }
-      - { lang: "zh-CN", q: "外国游客 中国 旅游" }
-      - { lang: "zh-CN", q: "中国游客 出境旅游" }
-      - { lang: "zh-CN", q: "144小时过境免签" }
-      # 英文组：覆盖海外视角
-      - { lang: "en-US", q: "China visa-free tourism" }
-      - { lang: "en-US", q: "inbound tourism China" }
-      - { lang: "en-US", q: "Chinese tourists overseas" }
-      - { lang: "en-US", q: "travel experience China" }
-    # 社交媒体定向搜索（site: 语法，免费）：抓取社交平台被 Google News 索引的内容
-    # Reddit 不被 Google News 索引，走 reddit 源的官方 API
+      # 中文组：入境游服务质量 / 负面体验 / 不文明行为
+      - { lang: "zh-CN", q: "外国游客 不文明行为" }
+      - { lang: "zh-CN", q: "中国游客 不文明行为 海外" }
+      - { lang: "zh-CN", q: "入境游客 投诉" }
+      - { lang: "zh-CN", q: "旅游 服务质量 问题" }
+      - { lang: "zh-CN", q: "外国游客 中国 体验" }
+      - { lang: "zh-CN", q: "景区 宰客 投诉" }
+      # 英文组：境外游客体验反馈（含隐性不满/文化差异）
+      - { lang: "en-US", q: "China travel experience problems" }
+      - { lang: "en-US", q: "China tourism service quality" }
+      - { lang: "en-US", q: "China culture shock tourists" }
+      - { lang: "en-US", q: "China travel visa problems" }
+    # 社交媒体定向搜索（site: 语法，免费）——客户点名平台：X / YouTube / Facebook / Instagram
     social_queries:
-      - { lang: "en-US", q: "site:quora.com China travel visa" }
-      - { lang: "en-US", q: "site:quora.com traveling China experience" }
-      - { lang: "en-US", q: "site:x.com China visa-free travel" }
-      - { lang: "en-US", q: "site:facebook.com China visa-free travel" }
+      - { lang: "en-US", q: "site:x.com China travel experience" }
+      - { lang: "en-US", q: "site:x.com China tourism service" }
+      - { lang: "en-US", q: "site:x.com China culture shock" }
       - { lang: "en-US", q: "site:youtube.com China travel experience" }
-      - { lang: "zh-CN", q: "site:weibo.com 外国游客 中国" }
-      - { lang: "zh-CN", q: "site:weibo.com 免签 入境" }
-      - { lang: "zh-CN", q: "site:xiaohongshu.com 入境旅游" }
+      - { lang: "en-US", q: "site:youtube.com China tourism problems" }
+      - { lang: "en-US", q: "site:facebook.com China travel experience" }
+      - { lang: "en-US", q: "site:instagram.com China travel" }
+      - { lang: "zh-CN", q: "site:xiaohongshu.com 入境 体验" }
+      - { lang: "zh-CN", q: "site:xiaohongshu.com 外国游客 服务" }
 
   reddit:
-    enabled: true
-    # 官方 API 密钥（可选，免费档）：在 .env 配置 REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET
-    # 未配置时使用匿名模式，可能被 403 限流
+    enabled: false         # 客户未点名，且匿名模式常 403，默认关闭
     client_id: ""
     client_secret: ""
     subreddits: ["travel", "ChinaTravel", "China", "solotravel"]
-    queries: ["China visa-free", "China tourism", "Chinese tourist", "China travel experience"]
-    limit: 15             # 每个子版块×关键词取前 N 条
-    sort: new             # new / relevance
+    queries: ["China visa-free", "China tourism", "China travel experience"]
+    limit: 15
+    sort: new
+
+  hotsearch:
+    enabled: true          # 国内平台热搜（百度/微博/头条/抖音等聚合榜）
+    boards:
+      # 优先文旅/社会/民生/国际类榜单，每个取前 N 条再按关键词预筛
+      - { name: "头条文旅", file: "最新_今日头条_文旅榜.json", max: 50 }
+      - { name: "微博热搜", file: "最新_微博热搜.json", max: 80 }
+      - { name: "微博社会", file: "最新_微博社会.json", max: 80 }
+      - { name: "头条热榜", file: "最新_今日头条_热榜.json", max: 80 }
+      - { name: "抖音热搜", file: "最新_抖音热搜.json", max: 80 }
+      - { name: "百度民生", file: "最新_百度热搜_民生榜.json", max: 80 }
+      - { name: "头条国际", file: "最新_今日头条_国际榜.json", max: 80 }
 
   domestic:
-    enabled: false        # 国内平台无公开稳定 API，默认关闭
-    # 说明：此处可配置公开 RSS 源（如人民网、新华网旅游频道等），
-    # 配置后自动接入通用 RSS 采集。今日头条/微博/小红书需单独评估合规代理方案。
+    enabled: false         # 通用 RSS（人民网等），如需要可配置 feeds
     feeds: []
 
 scoring:

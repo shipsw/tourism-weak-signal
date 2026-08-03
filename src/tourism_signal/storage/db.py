@@ -37,9 +37,9 @@ CREATE TABLE IF NOT EXISTS assessments (
   candidate_id TEXT NOT NULL,
   date TEXT NOT NULL,
   theme TEXT,
-  tourism_related INTEGER,
+  keep INTEGER,
   direction TEXT,
-  type TEXT,
+  category TEXT,
   reason TEXT,
   novelty REAL, repetition REAL, diffusion REAL,
   impact REAL, sustainability REAL,
@@ -100,9 +100,9 @@ class Database:
                 rows.append(
                     (
                         it.item_id, date, g.theme,
-                        int(f.result.tourism_related) if f else 1,
+                        int(f.result.keep) if f else 1,
                         f.result.direction if f else "",
-                        f.result.type if f else "",
+                        f.result.category if f else "",
                         (f.result.reason if f else "") or (score.reason if score else ""),
                         score.novelty if score else 0,
                         score.repetition if score else 0,
@@ -116,7 +116,7 @@ class Database:
                 )
         self.conn.executemany(
             "INSERT OR REPLACE INTO assessments "
-            "(candidate_id, date, theme, tourism_related, direction, type, reason, "
+            "(candidate_id, date, theme, keep, direction, category, reason, "
             "novelty, repetition, diffusion, impact, sustainability, total, level, signal_summary) "
             "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             rows,

@@ -31,11 +31,11 @@ class NewsItem:
 
 @dataclass
 class FilterResult:
-    """旅游相关过滤结果（Agent2 的输出）。"""
+    """服务质量过滤结果（Agent2 的输出）。"""
 
-    tourism_related: bool = False
+    keep: bool = False
     direction: str = ""      # 入境中国 | 出境中国 | 双向 | 其他 | 不确定
-    type: str = ""           # 游客行为 | 政策 | 航线 | 目的地 | 体验反馈 | 产业动态 | 其他
+    category: str = ""       # 入境不文明行为 | 出境不文明行为 | 服务环节问题 | 消费诚信 | 卫生安全 | 文化冲突/误解 | 体验反馈 | 政策 | 其他
     reason: str = ""
 
     def to_dict(self) -> dict:
@@ -44,9 +44,9 @@ class FilterResult:
     @classmethod
     def from_dict(cls, d: dict) -> "FilterResult":
         return cls(
-            tourism_related=bool(d.get("tourism_related", False)),
+            keep=bool(d.get("keep", False)),
             direction=str(d.get("direction", "")),
-            type=str(d.get("type", "")),
+            category=str(d.get("category", "")),
             reason=str(d.get("reason", "")),
         )
 
