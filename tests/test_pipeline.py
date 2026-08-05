@@ -147,6 +147,36 @@ class TestDiscoveryTime(unittest.TestCase):
         self.assertIsNone(_parse_time(""))
         self.assertIsNone(_parse_time("不是日期"))
 
+    def test_fix_source_placeholder(self):
+        """日报里 [来源](url) 占位应被替换为 [真实媒体名](url)。"""
+        from tourism_signal.agents.report import _fix_source_placeholders
+        md = "- 问题（评分5.0）：要点。[来源](https://example.com/a)\n"
+        url_map = {"https://example.com/a": "新浪财经"}
+        out = _fix_source_placeholders(md, url_map)
+        self.assertIn("[新浪财经](https://example.com/a)", out)
+        self.assertNotIn("[来源]", out)
+
+    def test_fix_source_placeholder_unmatched_kept(self):
+        """匹配不到媒体名的来源占位保留原样（不误删）。"""
+        from tourism_signal.agents.report import _fix_source_placeholders
+        md = "- 问题：要点。[来源](https://example.com/b)\n"
+        out = _fix_source_placeholders(md, {})
+        self.assertIn("[来源](https://example.com/b)", out)
+
+    def test_group_payload_source_md(self):
+        """observe 条目应带 source_md（[媒体名](链接)）供 LLM 直接引用。"""
+        from tourism_signal.agents.report import _group_payload
+        g = SignalGroup(
+            theme="问题主题", items=[make_item(1, title="t", source="google_news:zh-CN")],
+            stats={"n_items": 1},
+            score=SignalScore(novelty=6, total=5.0, level="观察信息"),
+        )
+        # 给 media 填充媒体名
+        g.items[0].media = "澎湃新闻"
+        p = _group_payload(g, full=False)
+        self.assertEqual(p["media_name"], "澎湃新闻")
+        self.assertIn("澎湃新闻", p["source_md"])
+
     def test_merge_similar(self):
         from tourism_signal.agents.weak_signal import _merge_similar
         g1 = SignalGroup(theme="免签政策促入境游", items=[make_item(1)],

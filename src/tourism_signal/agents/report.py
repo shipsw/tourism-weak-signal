@@ -47,9 +47,11 @@ REPORT_SYSTEM = """你是文旅部旅游服务质量研究助理，负责撰写�
 规则：
 1. 章节标题必须逐字使用上述五个标题；空章节也要保留标题并写"（今日无）"
 2. 只有「一、本期重点关注」章节的条目可以使用"重点关注"表述；其余章节一律称"观察信息"
-3. 内容必须基于我提供的数据，不得编造；每个条目附来源链接（Markdown 链接格式）
+3. 每个条目末尾必须附来源，格式为 Markdown 链接 `[具体媒体名](链接)`；
+   媒体名优先使用数据中给出的 media / first_item.media / source_md 里的媒体名，
+   严禁使用"来源"或空泛文字占位（如"[来源](...)"中的"来源"二字必须换成真实媒体名）
 4. 语言：中文，研究风格，客观克制；聚焦"苗头性问题"而非已成热点
-5. 重点关注条目必须包含 情况/共性扩散/风险点/来源 四小节，其余条目保持一行简洁"""
+5. 重点关注条目必须包含 情况/共性扩散/风险点/来源 四小节，其余条目保持一行简洁（末尾附来源）"""
 
 
 EXPERIENCE_CATEGORIES = {"入境不文明行为", "出境不文明行为", "服务环节问题", "消费诚信", "卫生安全", "文化冲突/误解", "体验反馈"}
@@ -69,6 +71,17 @@ def _is_social(g: SignalGroup) -> bool:
     return bool(g.stats.get("social"))
 
 
+def _media_name(i: dict) -> str:
+    """从条目提取展示用媒体名：优先真实媒体（media），其次数据源标签，最后 URL 域名。"""
+    m = (i.get("media") or "").strip()
+    if m:
+        return m
+    src = (i.get("source") or "").split(":")
+    if src and src[0] in ("google_news", "hotsearch", "serpapi"):
+        return src[0]
+    return ""
+
+
 def _group_payload(g: SignalGroup, full: bool) -> dict:
     base = {
         "theme": g.theme,
@@ -82,7 +95,20 @@ def _group_payload(g: SignalGroup, full: bool) -> dict:
         ],
     }
     if not full:
-        # 观察信息只给最紧凑的信息
+        # 观察信息只给最紧凑的信息，但补充可直接引用的媒体来源
+        items_md = base["items"]
+        first_item = {}
+        src_md = ""
+        for it in items_md:
+            name = _media_name(it)
+            url = it.get("url", "") or ""
+            if name and url:
+                first_item = it
+                src_md = f"[{name}]({url})"
+                break
+        if not src_md and items_md and items_md[0].get("url"):
+            first_item = items_md[0]
+            src_md = f"[来源]({items_md[0]['url']})"
         return {
             "theme": g.theme,
             "total": base["total"],
@@ -90,7 +116,9 @@ def _group_payload(g: SignalGroup, full: bool) -> dict:
             "categories": g.stats.get("categories", []),
             "directions": g.stats.get("directions", []),
             "sources": g.stats.get("sources", []),
-            "first_item": base["items"][0] if base["items"] else {},
+            "first_item": first_item,
+            "media_name": first_item.get("media") or "",
+            "source_md": src_md,   # 已拼好的 [媒体名](链接)，供 LLM 直接附在条目末尾
         }
     return base
 
@@ -163,6 +191,33 @@ def _save_report(md: str, report_dir: Path, date: str) -> Path:
     return path
 
 
+def _build_url_media_map(groups: list[SignalGroup]) -> dict[str, str]:
+    """建立 url → 媒体名 映射，供日报兜底替换[来源]占位用。"""
+    m: dict[str, str] = {}
+    for g in groups:
+        for it in g.items:
+            url = (it.url or "").strip()
+            name = _media_name({"media": it.media, "source": it.source})
+            if url and name:
+                m.setdefault(url, name)
+    return m
+
+
+def _fix_source_placeholders(md: str, url_map: dict[str, str]) -> str:
+    """兜底：把日报里 LLM 偷懒写的 `[来源](url)` 替换为 `[具体媒体名](url)`。
+    仅替换能匹配到媒体名的；匹配不到的保留原样。"""
+    import re as _re
+
+    def repl(mo: _re.Match):
+        url = mo.group(1).strip()
+        name = url_map.get(url)
+        if name:
+            return f"[{name}]({url})"
+        return mo.group(0)
+    # 匹配 [来源](url) / [来源1](url) / [来源](url) 尾部的占位
+    return _re.sub(r"\[来源[0-9]*\]\(([^)]+)\)", repl, md)
+
+
 def report_node(state: dict[str, Any]) -> dict[str, Any]:
     cfg = state["config"]
     groups: list[SignalGroup] = state["signals"]
@@ -187,6 +242,8 @@ def report_node(state: dict[str, Any]) -> dict[str, Any]:
 
     user = _build_user_prompt(groups, filtered_n, date)
     md = llm.chat_text(REPORT_SYSTEM, user, max_tokens=4096)
+    # 兜底：确保来源显示为真实媒体名
+    md = _fix_source_placeholders(md, _build_url_media_map(groups))
     path = _save_report(md, Path(cfg.output["report_dir"]), date)
 
     stats = state.get("stats", {})
