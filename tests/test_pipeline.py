@@ -105,6 +105,48 @@ class TestScoring(unittest.TestCase):
         self.assertEqual(_num("12", 0), 10.0)
         self.assertEqual(_num("abc", 4), 4.0)
 
+############ / 工具函数测试 ##############
+
+class TestDiscoveryTime(unittest.TestCase):
+    """discovery 时区/时间窗口（东八区：昨天 00:00 至今）。"""
+    @staticmethod
+    def _it(pub):
+        n = NewsItem("t", "", "u", "src")
+        n.published_at = pub
+        return n
+
+    def test_no_tz_parsed_as_cn(self):
+        from tourism_signal.agents.discovery import _parse_time
+        dt = _parse_time("2026-08-05 08:00:00")
+        self.assertIsNotNone(dt)
+        # 无时区标记 → 东八区
+        self.assertEqual(dt.utcoffset().total_seconds() // 3600, 8)
+
+    def test_gmt_parsed_as_utc(self):
+        from tourism_signal.agents.discovery import _parse_time
+        dt = _parse_time("Wed, 05 Aug 2026 08:00:00 GMT")
+        self.assertIsNotNone(dt)
+        self.assertEqual(dt.utcoffset().total_seconds(), 0)
+
+    def test_window_yesterday_to_now(self):
+        from tourism_signal.agents.discovery import _recent
+        from tourism_signal.utils import now_cn
+        from datetime import timedelta
+        now = now_cn()
+        # 前天（排除）
+        self.assertFalse(_recent(self._it((now - timedelta(days=2)).strftime("%Y-%m-%d 12:00:00"))))
+        # 昨天 00:00 边界（保留）
+        self.assertTrue(_recent(self._it((now - timedelta(days=1)).strftime("%Y-%m-%d 00:00:00"))))
+        # 昨天中午（保留）
+        self.assertTrue(_recent(self._it((now - timedelta(days=1)).strftime("%Y-%m-%d 12:00:00"))))
+        # 解析失败保留
+        self.assertTrue(_recent(self._it("")))
+
+    def test_invalid_time_kept(self):
+        from tourism_signal.agents.discovery import _parse_time
+        self.assertIsNone(_parse_time(""))
+        self.assertIsNone(_parse_time("不是日期"))
+
     def test_merge_similar(self):
         from tourism_signal.agents.weak_signal import _merge_similar
         g1 = SignalGroup(theme="免签政策促入境游", items=[make_item(1)],

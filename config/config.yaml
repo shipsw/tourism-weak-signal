@@ -19,7 +19,7 @@ sources:
   google_news:
     enabled: true
     max_results: 25       # 每个关键词取前 N 条
-    lookback_days: 3      # 只取最近 N 天的内容（自动追加 after: 时间窗口）
+    lookback_days: 2      # 只取最近 N 天的内容（自动追加 after: 时间窗口）；discovery 兜底精确到东八区昨天 00:00
     queries:
       # 中文组：入境游服务质量 / 负面体验 / 不文明行为
       - { lang: "zh-CN", q: "外国游客 不文明行为" }
