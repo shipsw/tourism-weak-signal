@@ -33,6 +33,13 @@ SYSTEM_PROMPT = """你是旅游服务质量研究分析师，服务于文旅部�
   - 例："游客睡车内被酒店收费""漓江竹筏涨价""上海周边游推荐""高铁票使用技巧"——若未涉及出入境游客，均为国内游，过滤
 - 国内旅游政策/通报中未指明涉外/出入境场景的
 
+【签证信息严格限定为旅游签证】凡涉及"签证/Visa/签证办理/免签"的信息，**必须确属出境/入境旅游相关的短签或旅游类签证**才算出入境信息：
+- 保留：入境旅游签证/免签/过境免签/旅游签证办理（如"外国人赴华旅游签证""对某国实行免签""旅游签证申请简化"）
+- 一律过滤（keep=false）：工作签证/工作许可、居留/居民签证、学生签证、移民/技术移民签证、海外务工签证；以及"某国公民因户籍/种族/职业而在华遇到签证身份问题"等与旅游无关的外国人在华居留/用工/D务工身份问题
+  - 例（应过滤）："印度侨民在华签证问题或影响双边交流"——这是外国居民/侨民的居留与工作身份问题，非旅游签证，过滤
+  - 例（应过滤）："赴华工作签证繁琐""来华工作手续文书多"——这是工作签证，非旅游，过滤
+  - 例（应过滤）："境外人员来华劳务/就业签证"——非旅游签证
+
 在通过【涉及跨境场景】门槛后，再判断是否属于需报送的「旅游服务质量苗头问题」：
 1. 服务质量问题（重点）：入境/出境游客不文明行为、服务环节缺陷（交通/住宿/餐饮/景区/OTA）面向出入境游客、宰客、文化冲突、误解与隐性不满
 2. 政策类：影响出入境旅游或游客行为的政策变化
@@ -58,8 +65,44 @@ SERVICE_KEYWORDS = [
 ]
 
 
+# 非旅游类签证关键词：即便命中服务质量，只要涉及工作/居留/求学/劳务用签证也过滤
+NON_TOURIST_VISA_MARKERS = [
+    "工作签证", "work visa", "work permit", "工作许可", "work permission",
+    "就业签证", "work-based visa", "来华工作", "foreign workers", "外籍劳工",
+    "resident", "residence", "居留", "居民签证", "移民", "immigration",
+    "student visa", "学生签证", "study visa", "labor migration", "劳务",
+    "侨民", "diaspora", "expat", "expatriate", "foreign residents", "在华务工",
+    # 贸易/商务/依赖语境下的赴华签证（多指商务/务工签证，非旅游）
+    "imports", "import", "trade", "贸易", "biz", "business visa", "商务签证",
+    "dependence on chinese", "dependency", "依赖中国", "对华依赖", "商务往来", "commerce",
+    "economic ties", "经济", "duty", "tariff", "关税",
+    # 特定外籍人群居留/权益/维权语境（侨民社区在华的签证身份问题，非游客）
+    "community", "社区", "flags visa", "raises concerns", "大使馆", "embassy",
+    "open house", "dialogue", "呼吁", "action on", "seeks action", "work in china",
+    "在华人", "华侨", "侨居", "resident", "在华印度", "indian community",
+]
+
+
+def _is_non_tourist_visa(item: NewsItem) -> bool:
+    """信息是否仅指向非旅游签证（工作/居留/移民/求学/劳务/侨民身份）。"""
+    text = (item.title + " " + item.content).lower()
+    if not any(k in text for k in ["visa", "签证"]):
+        return False
+    # 若同时出现旅游/免签明确字眼，倾向保留（交给 LLM 细判，兜底从宽）
+    tourist_hit = any(k in text for k in ["旅游签证", "tourism visa", "tourist visa", "免签", "visa-free", "过境免签", "旅游签", "visa on arrival"])
+    non_tourist_hit = [k for k in NON_TOURIST_VISA_MARKERS if k in text]
+    if not non_tourist_hit:
+        return False
+    # 有明确旅游签证字眼 → 保持判断（不归为纯非旅游）
+    if tourist_hit:
+        return False
+    return True
+
+
 def _fallback(item: NewsItem) -> FilterResult:
     text = (item.title + " " + item.content).lower()
+    if _is_non_tourist_visa(item):
+        return FilterResult(keep=False, reason="仅涉及非旅游类签证（工作/居留/移民/劳务/侨民身份），非旅游签证，排除（兜底）")
     hit = [k for k in SERVICE_KEYWORDS if k.lower() in text]
     if not hit:
         return FilterResult(keep=False, reason="无服务质量关键词命中（兜底）")
@@ -114,10 +157,17 @@ def filter_node(state: dict[str, Any]) -> dict[str, Any]:
             for it in chunk:
                 results[it.item_id] = _fallback(it)
 
+    def _decision(it: NewsItem) -> FilterResult:
+        r = results.get(it.item_id, _fallback(it))
+        # 硬规则：非旅游类签证(工作/居留/移民/劳务/侨民身份)一律剔除，不受 LLM 宽容影响
+        if r.keep and _is_non_tourist_visa(it):
+            r = FilterResult(keep=False, category="", direction="", reason="硬规则排除：仅涉及非旅游类签证（工作/居留/移民/劳务/侨民身份），非旅游签证")
+        return r
+
     filtered = [
-        FilteredCandidate(item=it, result=results.get(it.item_id, _fallback(it)))
+        FilteredCandidate(item=it, result=_decision(it))
         for it in items
-        if results.get(it.item_id, _fallback(it)).keep
+        if _decision(it).keep
     ]
 
     stats = state.get("stats", {})

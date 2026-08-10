@@ -378,5 +378,80 @@ class TestPipeline(unittest.TestCase):
         self.assertTrue(fr2.keep)
 
 
+class TestVisaScope(unittest.TestCase):
+    """非旅游类签证(工作/居留/移民/劳务/侨民/商务)必须被排除；旅游类签证保留。"""
+    from tourism_signal.agents.filter import _is_non_tourist_visa
+
+    def _has(self, title, content):
+        it = NewsItem(title=title, content=content, url="u", source="google_news:en-US")
+        it.item_id = "v"
+        return TestVisaScope._is_non_tourist_visa(it)
+
+    def test_exclude_work_visa(self):
+        self.assertTrue(self._has("外国人来华工作手续繁琐", "foreign workers face work visa paperwork and permits"))
+
+    def test_exclude_diaspora_visa(self):
+        self.assertTrue(self._has("印度侨民签证困扰", "Indian diaspora in China raises concerns over visa issues"))
+
+    def test_exclude_community_resident_visa(self):
+        self.assertTrue(self._has("印度社区签证问题", "Indian Community Flags Visa Issues In China"))
+
+    def test_exclude_business_trade_visa(self):
+        self.assertTrue(self._has("坦桑尼亚签证办理困难", "Visas to China reveal dependency on Chinese imports"))
+
+    def test_keep_tourist_visa(self):
+        self.assertFalse(self._has("外国游客旅游签证简化", "tourist visa simplified for inbound foreign tourists"))
+
+    def test_keep_visa_free(self):
+        self.assertFalse(self._has("多国免签入境", "China visa-free entry for travelers"))
+
+    def test_keep_transit_visa_free(self):
+        self.assertFalse(self._has("过境免签新政", "China transit visa-free policy for inbound visitors"))
+
+    def test_no_visa_word_not_flagged(self):
+        self.assertFalse(self._has("外宾支付不便", "foreign tourists Alipay payment difficulty in hotel"))
+
+    def test_non_tourist_visa_kept_only_if_tourism_keyword(self):
+        # 出现明确旅游签证字眼时，即使含 work 也应放行（交给 LLM 细判，硬规则从宽）
+        self.assertFalse(self._has("旅游签证与工作签证对比", "tourist visa vs work visa for China"))
+
+
+class TestOriginalContent(unittest.TestCase):
+    """X/Instagram 等社交原文应在日报 payload 中保留，供 LLM 引录。"""
+
+    def test_social_group_payload_has_original(self):
+        from tourism_signal.agents.report import _group_payload
+        it = make_item(10, title="X: visiting China", source="google_news_social:en-US")
+        it.content = "<p>So you want to visit China, traveler... it's a continent, like Europe.</p>"
+        it.url = "https://x.com/user/status/123"
+        g = SignalGroup(
+            theme="中国旅游劝告", items=[it],
+            stats={"n_items": 1, "sources": ["google_news_social"], "languages": ["en"],
+                   "directions": ["入境中国"], "categories": ["体验反馈"], "social": True},
+            score=SignalScore(novelty=8, total=5.0, level="观察信息"),
+        )
+        p = _group_payload(g, full=False)
+        self.assertEqual(p["social"], True)
+        oc = p["original_content"]
+        self.assertTrue(oc, "社交组应包含 original_content")
+        self.assertIn("continent, like Europe", oc[0]["content"])
+        # HTML 标签应被剥掉
+        self.assertNotIn("<p>", oc[0]["content"])
+
+    def test_social_missing_content_no_crash(self):
+        from tourism_signal.agents.report import _group_payload
+        it = make_item(11, title="X: theme", source="google_news_social:en-US")
+        it.content = ""
+        g = SignalGroup(
+            theme="主题", items=[it],
+            stats={"n_items": 1, "sources": ["google_news_social"], "languages": ["en"],
+                   "directions": ["入境中国"], "categories": ["体验反馈"], "social": True},
+            score=SignalScore(novelty=8, total=5.0, level="观察信息"),
+        )
+        p = _group_payload(g, full=False)
+        self.assertEqual(p["social"], True)
+        self.assertIsInstance(p["original_content"], list)
+
+
 if __name__ == "__main__":
     unittest.main()

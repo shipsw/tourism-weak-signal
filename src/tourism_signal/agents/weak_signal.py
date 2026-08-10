@@ -25,8 +25,11 @@ THEME_SYSTEM = """你是旅游服务质量研究助理，服务于文旅部研�
 主题标签应概括"发生了什么问题"：如「印度游客不文明行为」「酒店拒收外卡」「景区强制消费」「境外游客支付困扰」。
 多条信息如果说的是同一件事/同一类问题，应使用相同或高度相近的主题标签。
 
+针对 X/Instagram 等社交平台原文（source 含 google_news_social / site:x.com / site:instagram.com）：
+在原链不可直接打开的情况下，summary 中**尽量保留原文/原文关键英文句**（可先写中文概述，再附原文摘录，不要只给翻译丢原文），便于后续筛选。
+
 输出 JSON（必须包含 "themes" 数组）：
-{"themes": [{"id": "<输入id>", "theme": "主题标签", "summary": "一句话摘要"}]}"""
+{"themes": [{"id": "<输入id>", "theme": "主题标签", "summary": "一句话摘要（社交内容尽量含原文摘录）"}]}"""
 
 SCORE_SYSTEM = """你是旅游服务质量弱信号研判专家，服务于文旅部研究部门。对一组相关信息进行五维评分，每维 0-10 分：
 
@@ -42,6 +45,9 @@ SCORE_SYSTEM = """你是旅游服务质量弱信号研判专家，服务于文�
 - 文化冲突、服务弱项、误解等"隐含问题"（尚非舆情热点）尤其值得关注
 - 已成型的舆情热点（主流媒体集中报道多日）应降分，避免与舆情团队重复
 
+注意：对 X/Instagram 等社交平台内容，请基于原始英文内容判断，不要因非中文而降低价值；
+这些是用户无法直接打开的一手体验反馈，保留其原始表述更能体现细节。
+
 我将提供每组信息的客观统计（条数/来源数/语言数）和内容列表。
 输出 JSON（必须包含 "groups" 数组，数组长度与输入一致）：
 {"groups": [{"theme": "<主题>", "novelty": 0-10, "repetition": 0-10, "diffusion": 0-10, "impact": 0-10, "sustainability": 0-10, "reason": "评分理由（结合证据）"}]}"""
@@ -53,13 +59,25 @@ def _chunks(seq, n):
 
 
 def _extract_themes(llm: LLMClient, cands: list[FilteredCandidate], batch_size: int, max_chars: int) -> dict[str, dict]:
-    """返回 {item_id: {"theme":..., "summary":...}}"""
+    """返回 {item_id: {"theme":..., "summary":...}}。"""
     themes: dict[str, dict] = {}
     for chunk in _chunks(cands, batch_size):
-        payload = [
-            {"id": c.item.item_id, "title": c.item.title, "content": truncate(c.item.content, max_chars)}
-            for c in chunk
-        ]
+        payload = []
+        for c in chunk:
+            item = c.item
+            # 社交平台原文（X/Instagram 等）给更大的长度上限，便于保留英文原文
+            is_social = item.source.startswith(("google_news_social", "reddit", "hotsearch")) or any(
+                s in (item.source or "").lower() for s in ("x.com", "instagram")
+            )
+            cap = max_chars * 3 if is_social else max_chars
+            payload.append(
+                {
+                    "id": item.item_id,
+                    "title": item.title,
+                    "source": item.source,
+                    "content": truncate(item.content, cap),
+                }
+            )
         try:
             data = llm.chat_json(THEME_SYSTEM, json.dumps(payload, ensure_ascii=False))
             tlist = data.get("themes", []) if isinstance(data, dict) else data
@@ -163,7 +181,12 @@ def _score_groups(llm: LLMClient, cfg, groups: list[SignalGroup]) -> list[Signal
                 "theme": g.theme,
                 "stats": g.stats,
                 "items": [
-                    {"title": i.title, "content": truncate(i.content, int(cfg.llm.get("max_content_chars", 500)))}
+                    {
+                        "title": i.title,
+                        "source": i.source,
+                        # 社交平台原文给更大长度上限，便于保留英文原文
+                        "content": truncate(i.content, int(cfg.llm.get("max_content_chars", 500)) * (4 if g.stats.get("social") else 1)),
+                    }
                     for i in g.items[:5]  # 每组最多看 5 条，控制 token
                 ],
             }

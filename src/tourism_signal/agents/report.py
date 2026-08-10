@@ -51,7 +51,13 @@ REPORT_SYSTEM = """你是文旅部旅游服务质量研究助理，负责撰写�
    媒体名优先使用数据中给出的 media / first_item.media / source_md 里的媒体名，
    严禁使用"来源"或空泛文字占位（如"[来源](...)"中的"来源"二字必须换成真实媒体名）
 4. 语言：中文，研究风格，客观克制；聚焦"苗头性问题"而非已成热点
-5. 重点关注条目必须包含 情况/共性扩散/风险点/来源 四小节，其余条目保持一行简洁（末尾附来源）"""
+5. 重点关注条目必须包含 情况/共性扩散/风险点/来源 四小节，其余条目保持一行简洁（末尾附来源）
+
+【原文保留要求】针对「五、境外平台游客体验反馈」（X/Instagram 等社交平台的第一手内容）：
+- 用户通常无法直接打开原帖，因此**必须尽量呈现原文**，便于筛选判断
+- 当数据提供 original_content（含 title/content/url 的原文）时，请在要点中**保留英文原文关键句**：先用中文概述含义，再用原文引用/摘录关键句子（可适度截断，但不要意译丢掉信息），并附上 [平台名/媒体名](url) 来源
+- 若原文是英文，请保留英文原句（可配一句中文提示）；不要只给中文翻译而丢失原文
+- 同一组的 multiple 原始帖之间尽量都列出来（多平台、多账号出现类似内容更有价值）"""
 
 
 EXPERIENCE_CATEGORIES = {"入境不文明行为", "出境不文明行为", "服务环节问题", "消费诚信", "卫生安全", "文化冲突/误解", "体验反馈"}
@@ -109,6 +115,19 @@ def _group_payload(g: SignalGroup, full: bool) -> dict:
         if not src_md and items_md and items_md[0].get("url"):
             first_item = items_md[0]
             src_md = f"[来源]({items_md[0]['url']})"
+        # 社交平台（X/Instagram 等）游客体验是用户无法直接打开的一手弱信号：
+        # 必须保留原文/完整内容，便于用户筛选。
+        original_quotes = []
+        for i in g.items[:8]:
+            body = (i.content or "").strip()
+            if not body:
+                continue
+            # 去除 HTML 标签，保留干净文本
+            import re as _re
+            clean = _re.sub(r"<[^>]+>", "", body).strip()
+            title = (i.title or "").strip()
+            if clean or title:
+                original_quotes.append({"title": title, "content": clean, "url": i.url})
         return {
             "theme": g.theme,
             "total": base["total"],
@@ -116,9 +135,11 @@ def _group_payload(g: SignalGroup, full: bool) -> dict:
             "categories": g.stats.get("categories", []),
             "directions": g.stats.get("directions", []),
             "sources": g.stats.get("sources", []),
+            "social": bool(g.stats.get("social")),
             "first_item": first_item,
             "media_name": first_item.get("media") or "",
             "source_md": src_md,   # 已拼好的 [媒体名](链接)，供 LLM 直接附在条目末尾
+            "original_content": original_quotes,  # 原文（供 X/Instagram 等社交内容引用）
         }
     return base
 
