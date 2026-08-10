@@ -1,8 +1,9 @@
 # 密钥与本地配置
 .env
 
-# 输出产物：日志不入库；数据与日报提交回仓库（供 GitHub Actions 持久化）
+# 输出产物：日志不入库；日报 md 不入库（仅本地生成，GitHub 上已有的旧日报文件保留不删）
 outputs/logs/
+outputs/reports/
 
 # Python
 __pycache__/
