@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 import urllib.request
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit, urlunsplit
 
 from ..models import NewsItem
 from ..utils import md5
@@ -29,6 +29,23 @@ HOT_KEYWORDS = [
 
 # ai_tag / extra 中的辅助命中
 HOT_TAG_HITS = ["文旅", "旅游", "社会", "民生"]
+
+
+def _safe_url(u: str) -> str:
+    """对热搜 URL 做安全编码：仅对查询串/路径中的空格与中文做百分号编码，
+    保留 scheme://host/path?& = 等结构，避免 LLM 在 markdown 链接里因裸空格/中文而断链。"""
+    if not u:
+        return u
+    try:
+        parts = urlsplit(u)
+    except Exception:
+        return u
+    try:
+        path = quote(parts.path, safe='/:@-._~%!$&\'()+,;=')
+        query = quote(parts.query, safe='=&?/:+%`@;,$-_.!~*\'()')
+    except Exception:
+        path, query = parts.path, parts.query
+    return urlunsplit((parts.scheme, parts.netloc, path, query, ''))
 
 
 class HotSearchSource(BaseSource):
@@ -71,7 +88,7 @@ class HotSearchSource(BaseSource):
                 item = NewsItem(
                     title=title,
                     content="",
-                    url=str(r.get("url", "") or ""),
+                    url=_safe_url(str(r.get("url", "") or "")),
                     source=f"hotsearch:{name}",
                     published_at=str(r.get("hotdate", "") or ""),
                     language="zh",

@@ -163,6 +163,32 @@ class TestDiscoveryTime(unittest.TestCase):
         out = _fix_source_placeholders(md, {})
         self.assertIn("[来源](https://example.com/b)", out)
 
+    def test_fix_truncated_url(self):
+        """LLM 把来源 URL 截断时，应用数据库完整 URL 修复并闭合链接。"""
+        from tourism_signal.agents.report import _fix_source_placeholders
+        full = "https://news.google.com/rss/articles/CBMiVEFVX3lxTFBoXzE0bm93ZzA5eHV2%2FFullTail"
+        url_map = {full: "YouTube"}
+        # 未闭合 + 截断（日报在链接处被切断）
+        md = "- 上海景点体验：要点。[YouTube](https://news.google.com/rss/articles/CBMiVEFVX3lxTFBoXzE0bm93"
+        out = _fix_source_placeholders(md, url_map)
+        self.assertIn(f"[YouTube]({full})", out)
+        self.assertNotIn("CBMiVEFVX3lxTFBoXzE0bm93ZzA5eHV\n", out)
+        # 闭合 + 截断：不应产生双右括号
+        md2 = "- 要点。[YouTube](https://news.google.com/rss/articles/CBMiVEFVX3lxTFBoXzE0bm93)"
+        out2 = _fix_source_placeholders(md2, url_map)
+        self.assertIn("[YouTube](" + full + ")", out2)  # 恰好一个右括号
+        self.assertNotIn("" + full + "))", out2)
+
+    def test_fix_truncated_keeps_complete(self):
+        """完整 URL 与匹配不到的不应被改动。"""
+        from tourism_signal.agents.report import _fix_source_placeholders
+        full = "https://example.com/a/complete/url"
+        md = f"- 要点。[来源](https://example.com/a/complete/url)\n"
+        out = _fix_source_placeholders(md, {full: "媒体A"})
+        self.assertIn("[媒体A](https://example.com/a/complete/url)", out)
+        # 无关链接不被破坏
+        self.assertIn("https://other.com", _fix_source_placeholders("- [X](https://other.com)", {}))
+
     def test_group_payload_source_md(self):
         """observe 条目应带 source_md（[媒体名](链接)）供 LLM 直接引用。"""
         from tourism_signal.agents.report import _group_payload
@@ -259,6 +285,19 @@ class TestDiscoveryTime(unittest.TestCase):
         secs = payload["sections"]
         self.assertIn("三、出境游客行为与服务问题", secs)
         self.assertEqual(secs["三、出境游客行为与服务问题"][0]["theme"], "中国游客赴日热")
+
+    def test_safe_url_encodes_utf8_and_space(self):
+        """热搜含中文+空格的 URL 应百分号编码，避免 markdown 链接断链。"""
+        from tourism_signal.sources.hotsearch import _safe_url
+        out = _safe_url("https://s.weibo.com/weibo?q=泰国旅游 失联")
+        self.assertEqual(out, "https://s.weibo.com/weibo?q=%E6%B3%B0%E5%9B%BD%E6%97%85%E6%B8%B8%20%E5%A4%B1%E8%81%94")
+
+    def test_safe_url_keeps_encoded_and_plain(self):
+        """已编码 URL 与普通 URL 不应被双重编码或破坏。"""
+        from tourism_signal.sources.hotsearch import _safe_url
+        self.assertEqual(_safe_url("https://m.baidu.com/s?word=%E9%A6%96%E9%A1%B5"), "https://m.baidu.com/s?word=%E9%A6%96%E9%A1%B5")
+        self.assertEqual(_safe_url("https://example.com/a/b"), "https://example.com/a/b")
+        self.assertEqual(_safe_url(""), "")
 
 
 class TestGoogleNews(unittest.TestCase):

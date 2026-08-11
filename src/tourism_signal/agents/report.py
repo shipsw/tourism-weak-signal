@@ -54,9 +54,10 @@ REPORT_SYSTEM = """你是文旅部旅游服务质量研究助理，负责撰写�
 5. 重点关注条目必须包含 情况/共性扩散/风险点/来源 四小节，其余条目保持一行简洁（末尾附来源）
 
 【原文保留要求】针对「五、境外平台游客体验反馈」（X/Instagram 等社交平台的第一手内容）：
-- 用户通常无法直接打开原帖，因此**必须尽量呈现原文**，便于筛选判断
-- 当数据提供 original_content（含 title/content/url 的原文）时，请在要点中**保留英文原文关键句**：先用中文概述含义，再用原文引用/摘录关键句子（可适度截断，但不要意译丢掉信息），并附上 [平台名/媒体名](url) 来源
-- 若原文是英文，请保留英文原句（可配一句中文提示）；不要只给中文翻译而丢失原文
+- 用户通常无法直接打开原帖，因此**必须同时呈现英文原文与对应的中文翻译**，便于筛选判断
+- 当数据提供 original_content（含 title/content/url 的原文）时：先引用英文原文关键句，**紧接着给出准确对应的中文翻译/意译**（不要只给一句笼统的"中文提示"）
+- 排版建议：„英文原句…"（译：中文翻译……）——即每条原文后都必有译文
+- 若原文是英文，必须同时有英文原句和对应中文翻译，两者缺一不可；不要只给英文、也不要只给中文意译
 - 同一组的 multiple 原始帖之间尽量都列出来（多平台、多账号出现类似内容更有价值）"""
 
 
@@ -225,18 +226,63 @@ def _build_url_media_map(groups: list[SignalGroup]) -> dict[str, str]:
 
 
 def _fix_source_placeholders(md: str, url_map: dict[str, str]) -> str:
-    """兜底：把日报里 LLM 偷懒写的 `[来源](url)` 替换为 `[具体媒体名](url)`。
-    仅替换能匹配到媒体名的；匹配不到的保留原样。"""
+    """兜底修复日报里的来源链接。
+
+    1) 把 LLM 偷懒写的 `[来源](url)` 替换为 `[具体媒体名](url)`。
+    2) 当 LLM 把原始 URL 截断（与已收录的完整 URL 匹配其前缀但长度更短）时，
+       用数据库里的完整 URL 修正，并确保 markdown 链接闭合。
+    """
     import re as _re
 
-    def repl(mo: _re.Match):
+    # 已知的完整 URL → 媒体名 映射，按 URL 长度降序，优先匹配更长的完整 URL
+    known = sorted(url_map.keys(), key=len, reverse=True)
+
+    def _fix_truncated_url(url: str) -> str:
+        """若 url 是某个已知完整 URL 的前缀但长度不足，返回完整 URL；否则原样。"""
+        url = url.strip()
+        # 去掉可能残留的 ?oc 或尾部不完整字符
+        for full in known:
+            if len(url) < len(full) and full.startswith(url):
+                return full
+        return url
+
+    def repl_placeholder(mo: _re.Match):
         url = mo.group(1).strip()
         name = url_map.get(url)
+        full = _fix_truncated_url(url)
         if name:
-            return f"[{name}]({url})"
+            return f"[{name}]({full})"
+        if full != url:
+            return f"[来源]({full})"
         return mo.group(0)
-    # 匹配 [来源](url) / [来源1](url) / [来源](url) 尾部的占位
-    return _re.sub(r"\[来源[0-9]*\]\(([^)]+)\)", repl, md)
+
+    # 先修复 [xxx](url) 且未闭合的链接（缺右括号），URL 可能被截断
+    # 匹配 [media](url 直到行尾/`)），含截断但不闭合的情形
+    def repl_incomplete(mo: _re.Match):
+        label = mo.group(1)
+        url = mo.group(2).strip()
+        # 去掉尾部可能出现的非 URL 残字（如 `。`、`,`）
+        url = url.rstrip('。，,；;:：')
+        full = _fix_truncated_url(url)
+        # 仅在能定位到已知完整 URL 时才修复（避免误伤微博/百度等含中文的链接）
+        if full != url:
+            # 正则已消费了链接（含可能的右括号），统一补一个右括号
+            return f"[{label}]({full})"
+        if not url:
+            return mo.group(0)
+        # URL 完整且能匹配到已知媒体名：若闭合正常则原样返回
+        return mo.group(0)
+
+    # 处理含截断/未闭合链接的段落：形如 [媒体](https://... 可能带/不带右括号
+    md = _re.sub(
+        r"\[([^]]+)\]\((https?://[^)\s\n]*)(\))?",
+        repl_incomplete,
+        md,
+    )
+
+    # 再修复 [来源](url) 占位（闭合形式）
+    md = _re.sub(r"\[来源[0-9]*\]\(([^)]+)\)", repl_placeholder, md)
+    return md
 
 
 def report_node(state: dict[str, Any]) -> dict[str, Any]:
