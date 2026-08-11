@@ -221,7 +221,7 @@ class TestDiscoveryTime(unittest.TestCase):
         self.assertEqual(len(big.stats["sources"]), 2)  # 来源统计合并
 
     def test_social_group_routing(self):
-        """社交媒体信号应路由到「五、境外平台游客体验反馈」章节。"""
+        """社交媒体个人发布应路由到「二/三（一）境外数据（1）个人发布内容」章节。"""
         from tourism_signal.agents.report import _build_user_prompt
         import json as _json
         it = make_item(5, title="X: 在中国旅游用支付宝的体验", source="google_news_social:en-US")
@@ -241,16 +241,20 @@ class TestDiscoveryTime(unittest.TestCase):
         )
         payload = _json.loads(_build_user_prompt([social_g, news_g], 10, "2026-07-31"))
         secs = payload["sections"]
-        self.assertIn("五、境外平台游客体验反馈", secs)
-        self.assertEqual(secs["五、境外平台游客体验反馈"][0]["theme"], "外国游客支付体验")
-        # 社交组不应出现在二/四
-        for name in ("二、入境游客服务与行为问题", "四、其他苗头与政策动态"):
-            if name in secs:
-                themes = [g["theme"] for g in secs[name]] if isinstance(secs[name], list) else []
-                self.assertNotIn("外国游客支付体验", themes)
+        inbound = secs["二、入境游服务质量相关"]
+        # 社交组 → （一）境外数据（1）个人发布内容
+        personal = inbound["（一）境外数据"]["（1）个人发布内容"]
+        self.assertTrue(any(x["theme"] == "外国游客支付体验" for x in personal))
+        # 新闻组 → （1）媒体发布-其他境外媒体
+        media = inbound["（一）境外数据"]["（2）媒体发布"]
+        other = media.get("其他境外媒体", [])
+        self.assertTrue(any(x["theme"] == "入境数据发布" for x in other))
+        # 社交组不应出现在媒体发布里
+        for lst in (other, media.get("官媒海外版（合并提炼）", [])):
+            self.assertNotIn("外国游客支付体验", [x["theme"] for x in (lst or [])])
 
     def test_multi_direction_group_no_duplicate(self):
-        """方向同时含入境+出境的组只应归入唯一章节（避免日报重复）。"""
+        """方向同时含入境+出境的组只应归入唯一位置（避免日报重复）。"""
         from tourism_signal.agents.report import _build_user_prompt
         import json as _json
         it = make_item(7, title="推广中国旅游体验")
@@ -264,13 +268,25 @@ class TestDiscoveryTime(unittest.TestCase):
         )
         payload = _json.loads(_build_user_prompt([g], 10, "2026-07-31"))
         secs = payload["sections"]
-        found = [name for name in ("二、入境游客服务与行为问题", "三、出境游客行为与服务问题", "四、其他苗头与政策动态")
-                 if name in secs and isinstance(secs[name], list)
-                 and any(x["theme"] == "推广中国旅游体验" for x in secs[name])]
-        self.assertEqual(len(found), 1, f"该组应在且仅在一个章节，实际出现在 {found}")
+
+        def _collect(o):
+            """递归收集所有 group payload 的 theme。"""
+            found = []
+            if isinstance(o, dict):
+                if "theme" in o:
+                    found.append(o["theme"])
+                for v in o.values():
+                    found.extend(_collect(v))
+            elif isinstance(o, list):
+                for v in o:
+                    found.extend(_collect(v))
+            return found
+
+        theme_count = _collect(secs).count("推广中国旅游体验")
+        self.assertEqual(theme_count, 1, f"该组应恰好出现 1 次，实际 {theme_count}")
 
     def test_outbound_only_group_to_section3(self):
-        """仅出境中国方向的组应归入「三、出境游客行为与服务问题」。"""
+        """仅出境中国方向的组应归入「三、出境游服务质量相关」。"""
         from tourism_signal.agents.report import _build_user_prompt
         import json as _json
         it = make_item(8, title="中国游客赴日热")
@@ -283,8 +299,12 @@ class TestDiscoveryTime(unittest.TestCase):
         )
         payload = _json.loads(_build_user_prompt([g], 10, "2026-07-31"))
         secs = payload["sections"]
-        self.assertIn("三、出境游客行为与服务问题", secs)
-        self.assertEqual(secs["三、出境游客行为与服务问题"][0]["theme"], "中国游客赴日热")
+        outbound = secs["三、出境游服务质量相关"]
+        media = outbound["（一）境外数据"]["（2）媒体发布"]
+        self.assertTrue(any(x["theme"] == "中国游客赴日热" for x in media.get("其他境外媒体", [])))
+        # 不应出现在入境章
+        inbound = secs["二、入境游服务质量相关"]
+        self.assertNotIn("中国游客赴日热", str(json.dumps(inbound, ensure_ascii=False)))
 
     def test_safe_url_encodes_utf8_and_space(self):
         """热搜含中文+空格的 URL 应百分号编码，避免 markdown 链接断链。"""
@@ -298,6 +318,21 @@ class TestDiscoveryTime(unittest.TestCase):
         self.assertEqual(_safe_url("https://m.baidu.com/s?word=%E9%A6%96%E9%A1%B5"), "https://m.baidu.com/s?word=%E9%A6%96%E9%A1%B5")
         self.assertEqual(_safe_url("https://example.com/a/b"), "https://example.com/a/b")
         self.assertEqual(_safe_url(""), "")
+
+    def test_classify_source(self):
+        """来源分类：境外/境内 × 个人/官媒/其他境外媒体。"""
+        from tourism_signal.agents.report import _classify_source
+        self.assertEqual(_classify_source("google_news_social:en-US", "x.com"), ("境外", "个人"))
+        self.assertEqual(_classify_source("reddit:travel", ""), ("境外", "个人"))
+        self.assertEqual(_classify_source("google_news:en-US", "China Daily"), ("境外", "官媒海外版"))
+        self.assertEqual(_classify_source("google_news:en-US", "South China Morning Post"), ("境外", "其他境外媒体"))
+        self.assertEqual(_classify_source("hotsearch:微博社会", "微博社会"), ("境内", "境内平台/媒体"))
+        # 官媒大小写/带标点也能匹配
+        self.assertEqual(_classify_source("google_news:zh-CN", "Xinhua"), ("境外", "官媒海外版"))
+        self.assertEqual(_classify_source("google_news:zh-CN", "中国日报"), ("境外", "官媒海外版"))
+        # People's Daily 撇号归一化后应命中
+        self.assertEqual(_classify_source("google_news:en-US", "People's Daily"), ("境外", "官媒海外版"))
+        self.assertEqual(_classify_source("google_news:en-US", "South China Morning Post"), ("境外", "其他境外媒体"))
 
 
 class TestGoogleNews(unittest.TestCase):

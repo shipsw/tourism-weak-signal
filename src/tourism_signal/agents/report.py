@@ -12,9 +12,9 @@ from ..utils import today_str
 
 logger = logging.getLogger("tourism_signal.agents.report")
 
-REPORT_SYSTEM = """你是文旅部旅游服务质量研究助理，负责撰写《旅游服务质量苗头问题日报》。输出 Markdown，必须严格遵守以下结构（章节标题逐字使用）：
+REPORT_SYSTEM = """你是文旅部旅游服务质量研究助理，负责撰写《出入境旅游服务质量苗头问题日报》。输出 Markdown，必须严格遵守以下结构与标题层级（各级标题逐字使用）：
 
-# 旅游服务质量苗头问题日报
+# 出入境旅游服务质量苗头问题日报
 
 **日期**：<日期>
 
@@ -28,41 +28,116 @@ REPORT_SYSTEM = """你是文旅部旅游服务质量研究助理，负责撰写�
 - **来源**：链接列表
 <如无≥7分信号，此章节写：今日无重点关注苗头。>
 
-## 二、入境游客服务与行为问题
+## 二、入境游服务质量相关
 
-<方向=入境中国的服务质量问题（不文明行为/服务弱项/文化冲突/误解）。每条一行：- <主题>（评分X.X，<类别>）：一句话要点>
+<关注外国游客对中国境内旅游服务质量的评价。内部按 境外数据 → 境内数据 顺序呈现。>
+### （一）境外数据
+#### （1）个人发布内容
+<来自 X/YouTube/Facebook/Instagram/Reddit 等境外社交平台的游客个人发布的评价。每条单独呈现，格式：>
+- **〔态度标注〕｜中文概括（一句话）**
+  - 态度标注：称赞 / 吐槽 / 中性
+  - 中文概括需包括提及的具体省份、城市、景点；一句话
+  - 括号内附英文原文关键句
+  - 末尾附链接
+- 排版示例：`- 吐槽｜成都、张家界、上海：游客发布"推荐vs避雷"清单，称部分热门项目名不副实（"Not every famous China experience is worth the hype... these are the experiences I'd actually recommend vs skip"）`
+#### （2）媒体发布
+- **官媒海外版**（中国官方媒体海外版：CCTV, CGTN, CNR, People's Daily, China Daily, Global Times, Xinhua 等，名单后续补充）的报道内容**合并提炼成一段话**概括，不单独列条；末尾附上引用的来源链接列表
+- **非上述媒体的境外媒体**（如 South China Morning Post 南华早报、海峡时报 等）可**单独呈现**，每条格式参考个人发布但不必标注态度，改为：中文概括 + 要点，末尾附链接
+### （二）境内数据
+<来自境内平台/国内媒体的报道（如微博热搜、搜狐、新浪财经等）。合并雷同报道，按主题分段，每条或每段附来源链接。>
 
-## 三、出境游客行为与服务问题
+## 三、出境游服务质量相关
 
-<方向=出境中国的服务质量问题。每条一行：- <主题>（评分X.X，<类别>）：一句话要点>
+<关注中国游客出境旅游的评价与安全事件。格式与「二」一致，内部仍按 境外数据 → 境内数据 顺序。>
+### （一）境外数据
+#### （1）个人发布内容
+<境外社交平台中国游客/在华发布者的出境旅游评价。格式同「二（一）1」。>
+#### （2）媒体发布
+<官媒海外版合并提炼成一段；其他境外媒体可单独呈现。>
+### （二）境内数据
+<境内平台报道的出境游评价/安全事件。合并雷同报道，附来源。>
 
 ## 四、其他苗头与政策动态
 
-<其余 4-6 分观察信号（政策变化/双向/其他）。每条一行：- <主题>（评分X.X）：一句话要点>
-
-## 五、境外平台游客体验反馈
-
-<来自 X/YouTube/Facebook/Instagram/小红书 等社交平台的游客体验、抱怨、误解（第一手弱信号）。每条一行：- <主题>（评分X.X）：一句话要点>
+<双向/未定向/政策类等不便于归入二、三的信号。每条一行：- <主题>（评分X.X）：一句话要点。>
 
 规则：
-1. 章节标题必须逐字使用上述五个标题；空章节也要保留标题并写"（今日无）"
-2. 只有「一、本期重点关注」章节的条目可以使用"重点关注"表述；其余章节一律称"观察信息"
-3. 每个条目末尾必须附来源，格式为 Markdown 链接 `[具体媒体名](链接)`；
+1. 章节与大标题必须逐字使用：一、本期重点关注 / 二、入境游服务质量相关 / 三、出境游服务质量相关 / 四、其他苗头与政策动态；以及「二、三」内部的「（一）境外数据」「（二）境内数据」「（1）个人发布内容」「（2）媒体发布」。空章节/子标题也要保留并写"（今日无）"
+2. 只有「一、本期重点关注」可用"重点关注"表述；其余一律用"观察信息"
+3. 每个条目/段落末尾必须附来源 Markdown 链接 `[具体媒体名](链接)`；
    媒体名优先使用数据中给出的 media / first_item.media / source_md 里的媒体名，
-   严禁使用"来源"或空泛文字占位（如"[来源](...)"中的"来源"二字必须换成真实媒体名）
+   严禁用"来源"等空泛占位
 4. 语言：中文，研究风格，客观克制；聚焦"苗头性问题"而非已成热点
-5. 重点关注条目必须包含 情况/共性扩散/风险点/来源 四小节，其余条目保持一行简洁（末尾附来源）
+5. 重点关注条目必须含 情况/共性扩散/风险点/来源 四小节；二、三章个人发布条目按第（1）点规定格式
 
-【原文保留要求】针对「五、境外平台游客体验反馈」（X/Instagram 等社交平台的第一手内容）：
-- 用户通常无法直接打开原帖，因此**必须同时呈现英文原文与对应的中文翻译**，便于筛选判断
-- 当数据提供 original_content（含 title/content/url 的原文）时：先引用英文原文关键句，**紧接着给出准确对应的中文翻译/意译**（不要只给一句笼统的"中文提示"）
-- 排版建议：„英文原句…"（译：中文翻译……）——即每条原文后都必有译文
-- 若原文是英文，必须同时有英文原句和对应中文翻译，两者缺一不可；不要只给英文、也不要只给中文意译
-- 同一组的 multiple 原始帖之间尽量都列出来（多平台、多账号出现类似内容更有价值）"""
+【个人发布原文保留要求】针对「二/三（一）境外数据（1）个人发布内容」及社交平台第一手内容：
+- 用户通常无法直接打开原帖，因此**需同时呈现英文原文关键句与对应的中文态度概括**：先用态度标注（称赞/吐槽/中性），再给一句话中文概括（含省份/城市/景点），并在括号内附英文原文关键句
+- 若同一分组含多个原始帖，尽量都列出（多平台/多账号出现类似内容更有价值）
+- 英文原文关键句可适度截断，但不要丢失关键信息"""
 
 
 EXPERIENCE_CATEGORIES = {"入境不文明行为", "出境不文明行为", "服务环节问题", "消费诚信", "卫生安全", "文化冲突/误解", "体验反馈"}
 MAX_REPORT_GROUPS = 15  # 日报信号总数上限（控制输出 token，避免截断）
+
+# 官媒海外版名单：其报道内容合并提炼成一段话，不单独列条（可按需扩充）
+OFFICIAL_OVERSEAS_MEDIA = {
+    "cctv", "cgtn", "cnr", "people's daily", "people daily", "peoples daily",
+    "china daily", "global times", "xinhua", "新华社", "中国日报", "央视", "人民日报",
+}
+# 境内平台源前缀（国内热搜等）→ 归入“境内数据”
+DOMESTIC_SOURCE_PREFIXES = ("hotsearch", "weibo", "xiaohongshu")
+
+
+def _norm_media(name: str) -> str:
+    """归一化媒体名用于官媒匹配：小写、去撇号/标点/空白。"""
+    import re as _re
+    # 去掉撇号（People's -> Peoples），标点与空白都归并
+    return _re.sub(r"[\W_]+", " ", (name or "").lower().replace("'", "").replace("’", "")).strip()
+
+
+def _is_official_media(name: str) -> bool:
+    nm = _norm_media(name)
+    if not nm:
+        return False
+    # 名单项同样做撇号归一化后比较（People's Daily 与 People Daily 等价）
+    norm_off = {_norm_media(o) for o in OFFICIAL_OVERSEAS_MEDIA if o}
+    return any(o and (o in nm or nm in o) for o in norm_off)
+
+
+def _classify_source(item_source: str, media: str = "") -> tuple[str, str]:
+    """返回 (数据归属, 发布者类别)。
+
+    数据归属：境外 / 境内
+    发布者类别：个人 / 官媒海外版 / 其他境外媒体 / 境内媒体
+
+    判定优先级：
+    - hotsearch/微博/小红书 源 → 境内
+    - google_news_social / reddit 源 → 境外个人发布
+    - google_news 源 → 媒体发布，按 media 是否官媒区分
+    """
+    s = item_source or ""
+    if any(s.startswith(p) for p in DOMESTIC_SOURCE_PREFIXES):
+        # 国内热搜/微博/小红书 → 境内数据（媒体/平台）
+        return ("境内", "境内平台/媒体")
+    if s.startswith(("google_news_social", "reddit", "github", "rss")):
+        return ("境外", "个人")
+    if s.startswith("google_news") or s:
+        # google_news 新闻 → 境外媒体；按 media 判断官媒海外版
+        if _is_official_media(media):
+            return ("境外", "官媒海外版")
+        if media:
+            return ("境外", "其他境外媒体")
+        return ("境外", "其他境外媒体")
+    return ("境外", "其他")
+
+
+def _direction_label(g: SignalGroup) -> str:
+    dirs = g.stats.get("directions", [])
+    if "入境中国" in dirs:
+        return "入境"
+    if "出境中国" in dirs and "入境中国" not in dirs:
+        return "出境"
+    return "其他/未定向"
 
 
 def _is_focus(g: SignalGroup) -> bool:
@@ -90,15 +165,25 @@ def _media_name(i: dict) -> str:
 
 
 def _group_payload(g: SignalGroup, full: bool) -> dict:
+    # 计算来源分类（依据本组代表性 items 的 source/media）
+    main_origin = "境外"
+    main_pub = "其他"
+    for it in g.items[:5]:
+        origin, pub = _classify_source(it.source, it.media)
+        main_origin, main_pub = origin, pub
+        break
     base = {
         "theme": g.theme,
         "total": g.score.total if g.score else 0,
         "level": g.score.level if g.score else "",
         "score_detail": g.score.to_dict() if g.score else {},
         "stats": g.stats,
+        "direction": _direction_label(g),
+        "data_origin": main_origin,   # 境外 / 境内
+        "publisher": main_pub,        # 个人 / 官媒海外版 / 其他境外媒体 / 境内平台/媒体
         "items": [
-            {"title": i.title, "url": i.url, "source": i.source, "media": i.media}
-            for i in g.items[:8]
+            {"title": i.title, "url": i.url, "source": i.source, "media": i.media, "origin": _classify_source(i.source, i.media)[0]}
+            for i in g.items[:5]
         ],
     }
     if not full:
@@ -119,7 +204,7 @@ def _group_payload(g: SignalGroup, full: bool) -> dict:
         # 社交平台（X/Instagram 等）游客体验是用户无法直接打开的一手弱信号：
         # 必须保留原文/完整内容，便于用户筛选。
         original_quotes = []
-        for i in g.items[:8]:
+        for i in g.items[:5]:
             body = (i.content or "").strip()
             if not body:
                 continue
@@ -146,50 +231,93 @@ def _group_payload(g: SignalGroup, full: bool) -> dict:
 
 
 def _build_user_prompt(groups: list[SignalGroup], filtered_n: int, date: str) -> str:
-    """按方向/类别将信号路由到四个章节（仅纳入 >3 分信号）。"""
+    """按 方向 × 数据来源 路由信号到新的层级章节（仅纳入 >3 分信号）。
+
+    新结构：
+      一、本期重点关注（≥7 分）
+      二、入境游服务质量相关：（一）境外数据 [（1）个人发布 ｜（2）媒体发布] ｜（二）境内数据
+      三、出境游服务质量相关：同理
+      四、其他苗头与政策动态（双向/政策/未定向兜底）
+    """
     groups = [g for g in groups if _in_report(g)]
     groups = sorted(groups, key=lambda g: g.score.total if g.score else 0, reverse=True)[:MAX_REPORT_GROUPS]
 
     focus = [g for g in groups if _is_focus(g)]
     observe = [g for g in groups if not _is_focus(g)]
 
-    # 境外/社交平台游客体验单独成章（五），避免与新闻类混排
-    social = [g for g in observe if _is_social(g)]
-    others = [g for g in observe if not _is_social(g)]
-
     def _dirs(g: SignalGroup) -> list:
         return g.stats.get("directions", [])
 
-    def _cats(g: SignalGroup) -> set:
-        return set(g.stats.get("categories", []))
-
-    def _assign(g: SignalGroup) -> str:
-        """每个组只归入唯一章节，避免跨章节重复。
-        优先级：入境问题 > 出境问题 > 其他/政策。
-        """
+    def _assign_direction(g: SignalGroup) -> str:
         dirs = _dirs(g)
-        cats = _cats(g)
-        if "入境中国" in dirs and (not cats or cats & EXPERIENCE_CATEGORIES):
-            return "二、入境游客服务与行为问题"
+        if "入境中国" in dirs:
+            return "入境"
         if "出境中国" in dirs and "入境中国" not in dirs:
-            return "三、出境游客行为与服务问题"
-        return "四、其他苗头与政策动态"
+            return "出境"
+        return "其他"
 
-    buckets = {"二、入境游客服务与行为问题": [], "三、出境游客行为与服务问题": [], "四、其他苗头与政策动态": []}
-    for g in others:
-        buckets[_assign(g)].append(g)
+    def _classify_bucket(g: SignalGroup) -> tuple[str, str]:
+        """返回 (direction, origin)。"""
+        # 主来源分类
+        origin = "境外"
+        for it in g.items[:5]:
+            o, _ = _classify_source(it.source, it.media)
+            origin = o
+            break
+        return (_assign_direction(g), origin)
 
-    def _sec(name: str, glist: list[SignalGroup], full: bool):
-        if not glist:
-            return {name: {"note": "（今日无）"}}
-        return {name: [_group_payload(g, full) for g in glist]}
+    # 观察信号分桶：按键 (direction, origin)
+    buckets: dict[tuple[str, str], list[SignalGroup]] = {}
+    for g in observe:
+        dirn, origin = _classify_bucket(g)
+        buckets.setdefault((dirn, origin), []).append(g)
+
+    def _nested(official: list, other_media: list, personal: list, domestic: list) -> dict:
+        """构建一个方向（入境/出境）的子结构。"""
+        overseas_children: dict = {}
+        if personal:
+            overseas_children["（1）个人发布内容"] = [_group_payload(g, full=False) for g in personal]
+        media_sub: dict = {}
+        if official:
+            media_sub["官媒海外版（合并提炼）"] = [_group_payload(g, full=False) for g in official]
+        if other_media:
+            media_sub["其他境外媒体"] = [_group_payload(g, full=False) for g in other_media]
+        if media_sub:
+            overseas_children["（2）媒体发布"] = media_sub
+
+        return {
+            "（一）境外数据": overseas_children if overseas_children else {"note": "（今日无）"},
+            "（二）境内数据": [_group_payload(g, full=False) for g in domestic] if domestic else {"note": "（今日无）"},
+        }
+
+    # 入境 / 出境 各自的四类
+    inbound = {"personal": [], "official": [], "other_media": [], "domestic": []}
+    outbound = {"personal": [], "official": [], "other_media": [], "domestic": []}
+    others = []  # 双向/未定向 → 四、
+    for g in observe:
+        dirn, origin = _classify_bucket(g)
+        if dirn == "其他":
+            others.append(g)
+            continue
+        bucket = inbound if dirn == "入境" else outbound
+        pub = "其他"
+        for it in g.items[:5]:
+            _, pub = _classify_source(it.source, it.media)
+            break
+        if origin == "境内":
+            bucket["domestic"].append(g)
+        elif pub == "个人":
+            bucket["personal"].append(g)
+        elif pub == "官媒海外版":
+            bucket["official"].append(g)
+        else:
+            bucket["other_media"].append(g)
 
     sections = {}
-    sections.update(_sec("一、本期重点关注", focus, full=True))
-    sections.update(_sec("二、入境游客服务与行为问题", buckets["二、入境游客服务与行为问题"], full=False))
-    sections.update(_sec("三、出境游客行为与服务问题", buckets["三、出境游客行为与服务问题"], full=False))
-    sections.update(_sec("四、其他苗头与政策动态", buckets["四、其他苗头与政策动态"], full=False))
-    sections.update(_sec("五、境外平台游客体验反馈", social, full=False))
+    sections["一、本期重点关注"] = [_group_payload(g, full=True) for g in focus] if focus else {"note": "（今日无）"}
+    sections["二、入境游服务质量相关"] = _nested(inbound["official"], inbound["other_media"], inbound["personal"], inbound["domestic"])
+    sections["三、出境游服务质量相关"] = _nested(outbound["official"], outbound["other_media"], outbound["personal"], outbound["domestic"])
+    sections["四、其他苗头与政策动态"] = [_group_payload(g, full=False) for g in others] if others else {"note": "（今日无）"}
 
     payload = {
         "date": date,
@@ -296,19 +424,20 @@ def report_node(state: dict[str, Any]) -> dict[str, Any]:
     observe = [g for g in groups if g.score and g.score.total > 3]
     if not focus and not observe:
         md = (
-            f"# 旅游服务质量苗头问题日报\n\n**日期**：{date}\n\n"
+            f"# 出入境旅游服务质量苗头问题日报\n\n**日期**：{date}\n\n"
             "## 一、本期重点关注\n\n（今日无）\n\n"
-            "## 二、入境游客服务与行为问题\n\n（今日无）\n\n"
-            "## 三、出境游客行为与服务问题\n\n（今日无）\n\n"
-            "## 四、其他苗头与政策动态\n\n（今日无）\n\n"
-            "## 五、境外平台游客体验反馈\n\n（今日无）\n"
+            "## 二、入境游服务质量相关\n\n### （一）境外数据\n\n#### （1）个人发布内容\n\n（今日无）\n\n#### （2）媒体发布\n\n（今日无）\n\n### （二）境内数据\n\n（今日无）\n\n"
+            "## 三、出境游服务质量相关\n\n### （一）境外数据\n\n#### （1）个人发布内容\n\n（今日无）\n\n#### （2）媒体发布\n\n（今日无）\n\n### （二）境内数据\n\n（今日无）\n\n"
+            "## 四、其他苗头与政策动态\n\n（今日无）\n"
         )
         path = _save_report(md, Path(cfg.output["report_dir"]), date)
         logger.info("无弱信号，已生成空日报 %s", path)
         return {"report": md, "report_path": str(path), "stats": {**state.get("stats", {}), "report_saved": True}}
 
     user = _build_user_prompt(groups, filtered_n, date)
-    md = llm.chat_text(REPORT_SYSTEM, user, max_tokens=4096)
+    # max_tokens 增大到 8192：新版日报含重点关注四小节/多条个人发布原文/媒体合并段落，
+    # 4096 易在生成 三/四 章节前被截断
+    md = llm.chat_text(REPORT_SYSTEM, user, max_tokens=8192)
     # 兜底：确保来源显示为真实媒体名
     md = _fix_source_placeholders(md, _build_url_media_map(groups))
     path = _save_report(md, Path(cfg.output["report_dir"]), date)
