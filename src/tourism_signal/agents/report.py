@@ -39,10 +39,12 @@ REPORT_SYSTEM = """你是文旅部旅游服务质量研究助理，负责撰写�
   - 中文概括需包括提及的具体省份、城市、景点；一句话
   - 括号内附英文原文关键句
   - 末尾附链接
-- 排版示例：`- 吐槽｜成都、张家界、上海：游客发布"推荐vs避雷"清单，称部分热门项目名不副实（"Not every famous China experience is worth the hype... these are the experiences I'd actually recommend vs skip"）`
+- 尽力呈现发布者：若数据提供发布者账号（author / handle / @账号），在条目开头或来源处注明，如 `@ChinaDaily` 或 `China Daily`；便于读者判断是个人、媒体还是机构账号
+- 排版示例：`- 吐槽｜成都、张家界、上海：游客发布"推荐vs避雷"清单（@traveler2023，"Not every famous China experience is worth the hype..."）`
 #### （2）媒体发布
 - **官媒海外版**（中国官方媒体海外版：CCTV, CGTN, CNR, People's Daily, China Daily, Global Times, Xinhua 等，名单后续补充）的报道内容**合并提炼成一段话**概括，不单独列条；末尾附上引用的来源链接列表
 - **非上述媒体的境外媒体**（如 South China Morning Post 南华早报、海峡时报 等）可**单独呈现**，每条格式参考个人发布但不必标注态度，改为：中文概括 + 要点，末尾附链接
+- **务必正确归类**：凡来自官方媒体（China Daily/中国日报网、Xinhua、CGTN 等）及数据标明 publisher=官媒海外版 的内容，一律归入「媒体发布-官媒海外版」，**严禁放入「个人发布内容」**；只有当数据源为普通用户账号且 publisher=个人 时，才归入「个人发布内容」
 ### （二）境内数据
 <来自境内平台/国内媒体的报道（如微博热搜、搜狐、新浪财经等）。合并雷同报道，按主题分段，每条或每段附来源链接。>
 
@@ -83,6 +85,7 @@ MAX_REPORT_GROUPS = 15  # 日报信号总数上限（控制输出 token，避免
 OFFICIAL_OVERSEAS_MEDIA = {
     "cctv", "cgtn", "cnr", "people's daily", "people daily", "peoples daily",
     "china daily", "global times", "xinhua", "新华社", "中国日报", "央视", "人民日报",
+    "china.org.cn", "中国网", "安全部", "chinanews", "中新社", "国务院",
 }
 # 境内平台源前缀（国内热搜等）→ 归入“境内数据”
 DOMESTIC_SOURCE_PREFIXES = ("hotsearch", "weibo", "xiaohongshu")
@@ -99,12 +102,44 @@ def _is_official_media(name: str) -> bool:
     nm = _norm_media(name)
     if not nm:
         return False
-    # 名单项同样做撇号归一化后比较（People's Daily 与 People Daily 等价）
-    norm_off = {_norm_media(o) for o in OFFICIAL_OVERSEAS_MEDIA if o}
-    return any(o and (o in nm or nm in o) for o in norm_off)
+    words = nm.split()  # 形如 "chinadaily com cn"
+    compact = "".join(words)  # 紧凑无空格: "chinadailycomcn"
+    norm_off = [_norm_media(o) for o in OFFICIAL_OVERSEAS_MEDIA if o]
+    for o in norm_off:
+        if not o:
+            continue
+        o_words = o.split()
+        o_compact = "".join(o_words)
+        # 标准命中：名单词/短语出现在媒体名
+        if o in nm or nm in o:
+            return True
+        # 域名命中：中国日报域名 chinadaily.com.cn → 紧凑后含 chinadaily
+        # 或媒体名紧凑形式命中名单紧凑形式
+        if o_compact and (o_compact in compact or compact in o_compact):
+            return True
+    return False
 
 
-def _classify_source(item_source: str, media: str = "") -> tuple[str, str]:
+def _extract_author(title: str = "", media: str = "") -> tuple[str, str]:
+    """从标题/媒体信息尽力提取发布者名 (显示名, handle)。
+
+    目前可解析 Google News 对 X(Twitter) 条目的标题格式：
+      `显示名 (@handle) / Posts - x.com`  → (显示名, @handle)
+      或其变体 / Highlights、/ Replies。
+    其他平台 (Facebook/Instagram/YouTube) 的 Google News 标题通常不含账号名。
+    """
+    import re as _re
+    t = (title or "").strip()
+    if not t:
+        return ("", "")
+    # X 官方条目格式：显示名 (@handle) / Posts|Highlights|Replies
+    m = _re.match(r"^(.+?)\s+\(@(\w[A-Za-z0-9_]{1,15})\)\s+/\s+(?:Posts|Highlights|Replies)", t)
+    if m:
+        return (m.group(1).strip(), "@" + m.group(2))
+    return ("", "")
+
+
+def _classify_source(item_source: str, media: str = "", title: str = "") -> tuple[str, str]:
     """返回 (数据归属, 发布者类别)。
 
     数据归属：境外 / 境内
@@ -112,21 +147,22 @@ def _classify_source(item_source: str, media: str = "") -> tuple[str, str]:
 
     判定优先级：
     - hotsearch/微博/小红书 源 → 境内
-    - google_news_social / reddit 源 → 境外个人发布
-    - google_news 源 → 媒体发布，按 media 是否官媒区分
+    - google_news / 其他 源 → 媒体发布，按 media 是否官媒区分
+    - google_news_social / reddit 源 → 用标题解析发布者账号；若命中官媒名单归“官媒海外版”，
+      否则归“个人”（避免媒体官方账号被误当成个人）
     """
     s = item_source or ""
+    author_display, _handle = _extract_author(title, media)
     if any(s.startswith(p) for p in DOMESTIC_SOURCE_PREFIXES):
-        # 国内热搜/微博/小红书 → 境内数据（媒体/平台）
         return ("境内", "境内平台/媒体")
     if s.startswith(("google_news_social", "reddit", "github", "rss")):
+        # 社会化源：优先用标题解析出的显示名判断是否官媒/机构
+        if author_display and _is_official_media(author_display):
+            return ("境外", "官媒海外版")
         return ("境外", "个人")
     if s.startswith("google_news") or s:
-        # google_news 新闻 → 境外媒体；按 media 判断官媒海外版
         if _is_official_media(media):
             return ("境外", "官媒海外版")
-        if media:
-            return ("境外", "其他境外媒体")
         return ("境外", "其他境外媒体")
     return ("境外", "其他")
 
@@ -154,11 +190,18 @@ def _is_social(g: SignalGroup) -> bool:
 
 
 def _media_name(i: dict) -> str:
-    """从条目提取展示用媒体名：优先真实媒体（media），其次数据源标签，最后 URL 域名。"""
+    """从条目提取展示用媒体名：优先真实媒体（media），其次数据源标签，最后 URL 域名。
+    社交源若解析到发布者账号（author/handle），则优先展示账号名（如 China Daily / @ChinaDaily）。"""
+    # 对社交平台（X/Instagram/Facebook/YouTube）优先展示发布者账号
+    src = (i.get("source") or "").split(":")
+    if src and src[0] in ("google_news_social", "reddit"):
+        author = (i.get("author") or "").strip()
+        if author:
+            return author
+        return i.get("media") or ""
     m = (i.get("media") or "").strip()
     if m:
         return m
-    src = (i.get("source") or "").split(":")
     if src and src[0] in ("google_news", "hotsearch", "serpapi"):
         return src[0]
     return ""
@@ -169,7 +212,7 @@ def _group_payload(g: SignalGroup, full: bool) -> dict:
     main_origin = "境外"
     main_pub = "其他"
     for it in g.items[:5]:
-        origin, pub = _classify_source(it.source, it.media)
+        origin, pub = _classify_source(it.source, it.media, it.title)
         main_origin, main_pub = origin, pub
         break
     base = {
@@ -182,7 +225,7 @@ def _group_payload(g: SignalGroup, full: bool) -> dict:
         "data_origin": main_origin,   # 境外 / 境内
         "publisher": main_pub,        # 个人 / 官媒海外版 / 其他境外媒体 / 境内平台/媒体
         "items": [
-            {"title": i.title, "url": i.url, "source": i.source, "media": i.media, "origin": _classify_source(i.source, i.media)[0]}
+            {"title": i.title, "url": i.url, "source": i.source, "media": i.media, "author": _extract_author(i.title, i.media)[0], "origin": _classify_source(i.source, i.media, i.title)[0]}
             for i in g.items[:5]
         ],
     }
@@ -206,14 +249,20 @@ def _group_payload(g: SignalGroup, full: bool) -> dict:
         original_quotes = []
         for i in g.items[:5]:
             body = (i.content or "").strip()
-            if not body:
-                continue
             # 去除 HTML 标签，保留干净文本
             import re as _re
             clean = _re.sub(r"<[^>]+>", "", body).strip()
             title = (i.title or "").strip()
             if clean or title:
-                original_quotes.append({"title": title, "content": clean, "url": i.url})
+                author_display, handle = _extract_author(i.title, i.media)
+                original_quotes.append({
+                    "title": title,
+                    "content": clean,
+                    "url": i.url,
+                    "author": author_display,
+                    "handle": handle,
+                    "platform": i.media or (_media_name({"source": i.source, "media": i.media, "author": author_display})),
+                })
         return {
             "theme": g.theme,
             "total": base["total"],
@@ -225,7 +274,7 @@ def _group_payload(g: SignalGroup, full: bool) -> dict:
             "first_item": first_item,
             "media_name": first_item.get("media") or "",
             "source_md": src_md,   # 已拼好的 [媒体名](链接)，供 LLM 直接附在条目末尾
-            "original_content": original_quotes,  # 原文（供 X/Instagram 等社交内容引用）
+            "original_content": original_quotes,  # 原文（供 X/Instagram 等社交内容引用，含发布者账号）
         }
     return base
 
@@ -258,13 +307,26 @@ def _build_user_prompt(groups: list[SignalGroup], filtered_n: int, date: str) ->
 
     def _classify_bucket(g: SignalGroup) -> tuple[str, str]:
         """返回 (direction, origin)。"""
-        # 主来源分类
         origin = "境外"
         for it in g.items[:5]:
-            o, _ = _classify_source(it.source, it.media)
+            o, _ = _classify_source(it.source, it.media, it.title)
             origin = o
-            break
+            if o == "境内":
+                break
         return (_assign_direction(g), origin)
+
+    def _group_publisher(g: SignalGroup) -> str:
+        """确定整组的发布者类别：若任一 item 命中官媒/境内，则整组按媒体归属处理，
+        避免把官方媒体（如 China Daily X 账号）与普通游客个人混为一谈。"""
+        pubs = []
+        for it in g.items[:8]:
+            _, pub = _classify_source(it.source, it.media, it.title)
+            pubs.append(pub)
+        # 优先级：境内 > 官媒 > 其他境外媒体 > 个人
+        for pref in ("境内平台/媒体", "官媒海外版", "其他境外媒体"):
+            if pref in pubs:
+                return pref
+        return "个人"
 
     # 观察信号分桶：按键 (direction, origin)
     buckets: dict[tuple[str, str], list[SignalGroup]] = {}
@@ -300,18 +362,15 @@ def _build_user_prompt(groups: list[SignalGroup], filtered_n: int, date: str) ->
             others.append(g)
             continue
         bucket = inbound if dirn == "入境" else outbound
-        pub = "其他"
-        for it in g.items[:5]:
-            _, pub = _classify_source(it.source, it.media)
-            break
+        pub = _group_publisher(g)
         if origin == "境内":
             bucket["domestic"].append(g)
-        elif pub == "个人":
-            bucket["personal"].append(g)
         elif pub == "官媒海外版":
             bucket["official"].append(g)
-        else:
+        elif pub in ("其他境外媒体",):
             bucket["other_media"].append(g)
+        else:
+            bucket["personal"].append(g)
 
     sections = {}
     sections["一、本期重点关注"] = [_group_payload(g, full=True) for g in focus] if focus else {"note": "（今日无）"}

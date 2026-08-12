@@ -333,6 +333,28 @@ class TestDiscoveryTime(unittest.TestCase):
         # People's Daily 撇号归一化后应命中
         self.assertEqual(_classify_source("google_news:en-US", "People's Daily"), ("境外", "官媒海外版"))
         self.assertEqual(_classify_source("google_news:en-US", "South China Morning Post"), ("境外", "其他境外媒体"))
+        # 中国日报域名、中国网等作为媒体名也应命中官媒
+        self.assertEqual(_classify_source("google_news:zh-CN", "chinadaily.com.cn", "t"), ("境外", "官媒海外版"))
+        self.assertEqual(_classify_source("google_news:en-US", "China.org.cn", "t"), ("境外", "官媒海外版"))
+
+    def test_extract_author(self):
+        """从 X 标题解析发布者账号。"""
+        from tourism_signal.agents.report import _extract_author
+        self.assertEqual(_extract_author("China Daily (@ChinaDaily) / Posts - x.com"), ("China Daily", "@ChinaDaily"))
+        self.assertEqual(_extract_author("China Xinhua News (@XHNews) / Posts - x.com"), ("China Xinhua News", "@XHNews"))
+        # 非账号格式标题解析不出
+        self.assertEqual(_extract_author('"China Cool" appeals to intl tourists', "x.com"), ("", ""))
+        self.assertEqual(_extract_author("", "x.com"), ("", ""))
+        # handle 过长/非法则不匹配
+        self.assertEqual(_extract_author("Foo (@toolonghandle123456789) / Posts - x.com"), ("", ""))
+
+    def test_social_official_media_classified_official(self):
+        """X 上官方媒体账号（如 China Daily @ChinaDaily）不应被误归为个人。"""
+        from tourism_signal.agents.report import _classify_source
+        self.assertEqual(_classify_source("google_news_social:en-US", "x.com", "China Daily (@ChinaDaily) / Posts - x.com"), ("境外", "官媒海外版"))
+        self.assertEqual(_classify_source("google_news_social:en-US", "x.com", "China Xinhua News (@XHNews) / Posts"), ("境外", "官媒海外版"))
+        # 普通个人账号仍归个人
+        self.assertEqual(_classify_source("google_news_social:en-US", "x.com", "Jiba Lamichhane (@Jibalamichhane) / Posts"), ("境外", "个人"))
 
 
 class TestGoogleNews(unittest.TestCase):
