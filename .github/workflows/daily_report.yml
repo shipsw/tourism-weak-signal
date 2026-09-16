@@ -40,6 +40,8 @@ jobs:
       LLM_MODEL: ${{ secrets.LLM_MODEL }}
       REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
       REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
+      SERPAPI_API_KEY: ${{ secrets.SERPAPI_API_KEY }}
+      YOUTUBE_API_KEYS: ${{ secrets.YOUTUBE_API_KEYS }}
 
     steps:
       - name: 检出代码（含历史 DB）
@@ -63,6 +65,8 @@ jobs:
           LLM_MODEL=${LLM_MODEL}
           REDDIT_CLIENT_ID=${REDDIT_CLIENT_ID}
           REDDIT_CLIENT_SECRET=${REDDIT_CLIENT_SECRET}
+          SERPAPI_API_KEY=${SERPAPI_API_KEY}
+          YOUTUBE_API_KEYS=${YOUTUBE_API_KEYS}
           EOF
           # 校验必填密钥
           if [ -z "${LLM_API_KEY}" ] || [ -z "${LLM_BASE_URL}" ] || [ -z "${LLM_MODEL}" ]; then

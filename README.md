@@ -29,7 +29,9 @@ Windows 定时任务：使用 `scripts/run_daily.bat` 注册到任务计划程�
 
 1. 仓库 **Settings → Secrets and variables → Actions** 添加 Secrets：
    - `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL`（必填，与 `.env` 相同值）
-   - `REDDIT_CLIENT_ID` / `REDDIT_CLIENT_SECRET`（可选）
+   - `REDDIT_CLIENT_ID` / `REDDIT_CLIENT_SECRET`（可选，抓 Reddit 社区讨论）
+   - `SERPAPI_API_KEY`（可选，真实 Google 搜索抓 X/Instagram/Facebook）
+   - `YOUTUBE_API_KEYS`（可选，YouTube 游客 Vlog+评论；多个 key 逗号分隔轮换）
 2. 默认每天 **北京时间 07:00** 自动运行（`cron: 0 23 * * *` UTC，可改 `schedule`）；
    也可在 **Actions 页手动触发**（workflow_dispatch）补跑。
 3. 每次运行后，SQLite 数据库与日报 Markdown 会自动 commit 回仓库
