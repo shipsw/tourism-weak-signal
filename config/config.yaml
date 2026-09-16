@@ -46,13 +46,54 @@ sources:
       - { lang: "zh-CN", q: "site:xiaohongshu.com 外国游客 服务" }
 
   reddit:
-    enabled: false         # 客户未点名，且匿名模式常 403，默认关闭
-    client_id: ""
-    client_secret: ""
-    subreddits: ["travel", "ChinaTravel", "China", "solotravel"]
-    queries: ["China visa-free", "China tourism", "China travel experience"]
-    limit: 15
+    enabled: true          # 启用：官方 OAuth（.env 配置 REDDIT_CLIENT_ID/SECRET，免费）
+    client_id: ""           # 留空则从 .env 读取
+    client_secret: ""       # 留空则从 .env 读取
+    subreddits: ["ChinaTravel", "travel", "China", "solotravel", "VisitingChina"]
+    queries: [
+      "China travel experience",
+      "China hotel OR train OR payment problem",
+      "China visa-free experience",
+      "China tourist scam OR overcharge",
+      "China trip review",
+    ]
+    limit: 25
     sort: new
+
+  # YouTube 官方 API：游客 Vlog + 评论（一手体验反馈）。
+  # 需 .env 配置 YOUTUBE_API_KEYS（多个 key 逗号分隔，自动轮换规避日配额）。
+  youtube:
+    enabled: true
+    max_results: 10         # 每个查询取前 N 个视频（search 100单位/次，注意配额）
+    lookback_days: 7        # 只取最近 N 天发布的视频
+    fetch_comments: true    # 是否抓视频评论（评论=一手游客反馈，1单位/次，便宜）
+    max_comments: 20        # 每个视频最多抓多少条热门评论
+    comment_min_likes: 0    # 评论最少点赞数（过滤无意义评论）
+    queries:
+      - { lang: "en-US", q: "China travel experience" }
+      - { lang: "en-US", q: "China travel problems" }
+      - { lang: "en-US", q: "visiting China tips" }
+      - { lang: "en-US", q: "China trip honest review" }
+      - { lang: "en-US", q: "China culture shock" }
+
+  # SerpApi（真实 Google 搜索）：搜 X/Instagram/Facebook 等社媒。
+  # 需 .env 配置 SERPAPI_API_KEY；按次计费，daily_budget 限制每天搜索次数防超支。
+  serpapi:
+    enabled: true
+    engine: google            # google 引擎对 site:x.com / instagram 社媒检索效果更好
+    daily_budget: 6           # 每天最多 6 次搜索（防超额）
+    max_results: 15
+    queries:
+      # X / Twitter 游客一手反馈（google 引擎 + site: 语法）
+      - { lang: "en-US", q: "site:x.com China travel experience" }
+      - { lang: "en-US", q: "site:x.com China travel scam OR overcharge OR complaint" }
+      # Instagram 游客体验
+      - { lang: "en-US", q: "site:instagram.com China travel experience" }
+      # Facebook 游客反馈
+      - { lang: "en-US", q: "site:facebook.com China travel experience" }
+      # 中国出入境服务质量（网页/新闻，google 引擎）
+      - { lang: "en-US", q: "China travel tourist scam OR overcharge complaint" }
+      - { lang: "zh-CN", q: "外国游客 中国 旅游 体验 问题" }
 
   hotsearch:
     enabled: true          # 国内平台热搜（百度/微博/头条/抖音等聚合榜）

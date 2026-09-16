@@ -147,19 +147,33 @@ def _classify_source(item_source: str, media: str = "", title: str = "") -> tupl
 
     判定优先级：
     - hotsearch/微博/小红书 源 → 境内
+    - youtube / reddit / google_news_social 源 → 境外个人发布
+      （ youtube 视频/评论、Reddit 帖、社交帖都是一手内容；若解析出官媒账号则归官媒）
+    - serpapi 源 → 若来自社媒平台(x/instagram/facebook)归个人，否则归境外媒体
     - google_news / 其他 源 → 媒体发布，按 media 是否官媒区分
-    - google_news_social / reddit 源 → 用标题解析发布者账号；若命中官媒名单归“官媒海外版”，
-      否则归“个人”（避免媒体官方账号被误当成个人）
     """
     s = item_source or ""
     author_display, _handle = _extract_author(title, media)
     if any(s.startswith(p) for p in DOMESTIC_SOURCE_PREFIXES):
         return ("境内", "境内平台/媒体")
-    if s.startswith(("google_news_social", "reddit", "github", "rss")):
-        # 社会化源：优先用标题解析出的显示名判断是否官媒/机构
+    if s.startswith(("google_news_social", "reddit", "youtube", "github", "rss", "tiktok")):
+        # 一手社会内容：先看是否官媒/机构账号，否则归个人
         if author_display and _is_official_media(author_display):
             return ("境外", "官媒海外版")
+        if media and _is_official_media(media):
+            return ("境外", "官媒海外版")
         return ("境外", "个人")
+    if s.startswith("serpapi"):
+        # SerpApi 搜索：根据媒体域名判断是否社媒
+        social_domains = ("x.com", "twitter.com", "instagram.com", "facebook.com",
+                          "tiktok.com", "threads.net", "reddit.com")
+        if any(d in (media or "").lower() for d in social_domains):
+            if author_display and _is_official_media(author_display):
+                return ("境外", "官媒海外版")
+            return ("境外", "个人")
+        if _is_official_media(media):
+            return ("境外", "官媒海外版")
+        return ("境外", "其他境外媒体")
     if s.startswith("google_news") or s:
         if _is_official_media(media):
             return ("境外", "官媒海外版")

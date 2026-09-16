@@ -122,8 +122,9 @@ class RedditSource(BaseSource):
                         ),
                         language="en",
                         keywords=[q],
-                        media=f"reddit r/{sub}",
-                        raw={"subreddit": sub, "score": d.get("score", 0), "social": True},
+                        media=f"u/{d.get('author', '')}" if d.get("author") else f"reddit r/{sub}",
+                        raw={"subreddit": sub, "score": d.get("score", 0), "social": True,
+                             "author": d.get("author", ""), "num_comments": d.get("num_comments", 0)},
                     )
                     item.item_id = md5(item.url or item.title)
                     fetched.append(item)

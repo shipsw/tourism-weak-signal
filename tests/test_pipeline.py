@@ -549,5 +549,65 @@ class TestOriginalContent(unittest.TestCase):
         self.assertIsInstance(p["original_content"], list)
 
 
+class TestNewSources(unittest.TestCase):
+    """新数据源：YouTube / SerpApi / Reddit 的解析与分类。"""
+
+    def test_serpapi_parsers(self):
+        from tourism_signal.sources.serpapi_source import (
+            _parse_google_news, _parse_google, _parse_bing, _PARSERS,
+        )
+        # google_news: source 是 dict
+        t, l, s, d, src = _parse_google_news({"title": "T", "link": "L", "snippet": "S",
+                                              "iso_date": "2026-09-01", "source": {"name": "Xinhua"}})
+        self.assertEqual((t, l, src), ("T", "L", "Xinhua"))
+        # google 网页
+        t, l, s, d, src = _parse_google({"title": "T", "link": "L", "snippet": "S", "displayed_link": "x.com"})
+        self.assertEqual((t, l), ("T", "L"))
+        # 引擎注册完整
+        self.assertIn("google", _PARSERS)
+        self.assertIn("google_news", _PARSERS)
+
+    def test_serpapi_budget_guard(self):
+        """无 key 时直接跳过；预算耗尽不再请求。"""
+        import tempfile
+        from pathlib import Path
+        from tourism_signal.sources.serpapi_source import SerpApiSource
+        tmp = Path(tempfile.mkdtemp())
+        # 无 key → 空（显式清空，不依赖环境变量）
+        s = SerpApiSource({"api_key": "", "daily_budget": 2, "queries": [{"q": "x"}]})
+        s.api_key = ""
+        s.usage_file = tmp / "usage.json"
+        s.status_file = tmp / "status.json"
+        self.assertEqual(s.fetch(), [])
+        # 预算耗尽：budget=0 → 不发起搜索
+        s2 = SerpApiSource({"api_key": "dummy", "daily_budget": 0, "queries": [{"q": "x"}]})
+        s2.usage_file = tmp / "usage2.json"
+        s2.status_file = tmp / "status2.json"
+        self.assertEqual(s2.fetch(), [])
+
+    def test_youtube_requires_keys(self):
+        """无 key 时 YouTube 源安全返回空。"""
+        import os
+        from unittest.mock import patch
+        from tourism_signal.sources.youtube import YouTubeSource
+        with patch.dict(os.environ, {"YOUTUBE_API_KEYS": ""}, clear=False):
+            s = YouTubeSource({"api_keys": "", "queries": [{"q": "x"}]})
+            self.assertEqual(s.api_keys, [])
+            self.assertEqual(s.fetch(), [])
+
+    def test_classify_new_sources(self):
+        """youtube/reddit/serpapi 来源应正确归类。"""
+        from tourism_signal.agents.report import _classify_source
+        self.assertEqual(_classify_source("youtube:comment", "@user", "[评论] x"), ("境外", "个人"))
+        self.assertEqual(_classify_source("youtube:video", "Some Channel", "x"), ("境外", "个人"))
+        self.assertEqual(_classify_source("reddit:ChinaTravel", "u/abc", "x"), ("境外", "个人"))
+        # serpapi 来自社媒平台 → 个人；普通网页 → 其他境外媒体
+        self.assertEqual(_classify_source("serpapi:web", "x.com", "x"), ("境外", "个人"))
+        self.assertEqual(_classify_source("serpapi:web", "instagram.com", "x"), ("境外", "个人"))
+        self.assertEqual(_classify_source("serpapi:web", "scmp.com", "x"), ("境外", "其他境外媒体"))
+        # youtube 频道命中官媒 → 官媒海外版
+        self.assertEqual(_classify_source("youtube:video", "CGTN", "x"), ("境外", "官媒海外版"))
+
+
 if __name__ == "__main__":
     unittest.main()

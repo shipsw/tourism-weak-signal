@@ -9,12 +9,16 @@ from .domestic import RSSSource
 from .google_news import GoogleNewsSource
 from .hotsearch import HotSearchSource
 from .reddit import RedditSource
+from .serpapi_source import SerpApiSource
+from .youtube import YouTubeSource
 
 SOURCE_REGISTRY: dict[str, type[BaseSource]] = {
     "google_news": GoogleNewsSource,
     "reddit": RedditSource,
     "domestic": RSSSource,
     "hotsearch": HotSearchSource,
+    "youtube": YouTubeSource,
+    "serpapi": SerpApiSource,
 }
 
 

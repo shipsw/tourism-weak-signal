@@ -3,6 +3,9 @@
 
 # 输出产物：日志不入库；数据与日报提交回仓库（供 GitHub Actions 持久化并部署 Pages）
 outputs/logs/
+# 运行时状态文件（每次运行变化，不入库）
+outputs/data/serpapi_usage.json
+outputs/data/serpapi_status.json
 
 # Python
 __pycache__/
