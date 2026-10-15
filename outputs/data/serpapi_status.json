@@ -1,9 +1,11 @@
 {
- "date": "2026-10-14",
+ "date": "2026-10-15",
  "used": 3,
  "budget": 3,
  "remaining": 0,
- "success": 3,
- "failed": 0,
- "errors": []
+ "success": 2,
+ "failed": 1,
+ "errors": [
+  "google 'site:x.com China travel scam OR overcharge OR complaint': HTTPSConnectionPool(host='serpapi.com', port=443): Read timed out. (read timeout=30)"
+ ]
 }
