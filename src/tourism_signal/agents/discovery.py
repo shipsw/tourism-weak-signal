@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import logging
+import threading
+import time
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from typing import Any
@@ -11,6 +13,32 @@ from ..sources import build_sources
 from ..utils import CN_TZ, dedupe, norm_text, now_cn
 
 logger = logging.getLogger("tourism_signal.agents.discovery")
+
+DEFAULT_FETCH_TIMEOUT = 120  # 单个数据源抓取硬超时（秒），可用 fetch_timeout 覆盖
+
+
+def _fetch_with_timeout(src, timeout: int) -> list[NewsItem]:
+    """在 daemon 线程中抓取单个数据源，超时即放弃该源，不影响其它源。
+
+    用 daemon 线程而非 ThreadPoolExecutor：后者在解释器退出时会 join 所有线程，
+    卡死的线程反而会让整个进程无法结束。
+    """
+    box: dict[str, Any] = {}
+
+    def _run():
+        try:
+            box["items"] = src.fetch()
+        except Exception as e:  # noqa: BLE001 —— 单源失败不影响其它源
+            box["error"] = e
+
+    t = threading.Thread(target=_run, name=f"fetch-{getattr(src, 'name', '?')}", daemon=True)
+    t.start()
+    t.join(timeout)
+    if t.is_alive():
+        raise TimeoutError(f"抓取超过 {timeout}s 未返回")
+    if "error" in box:
+        raise box["error"]
+    return box.get("items", [])
 
 
 def _parse_time(s: str):
@@ -52,11 +80,19 @@ def discovery_node(state: dict[str, Any]) -> dict[str, Any]:
     items: list[NewsItem] = []
 
     for src in build_sources(cfg):
+        name = getattr(src, "name", "?")
+        timeout = int(src.settings.get("fetch_timeout", DEFAULT_FETCH_TIMEOUT))
+        started = time.monotonic()
         try:
-            fetched = src.fetch()
+            fetched = _fetch_with_timeout(src, timeout)
             items.extend(fetched)
+            logger.info("数据源 %s：%d 条，耗时 %.1fs", name, len(fetched), time.monotonic() - started)
+        except TimeoutError as e:
+            logger.error("数据源 %s 抓取超时（已跳过该源），耗时 %.1fs：%s",
+                         name, time.monotonic() - started, e)
         except Exception as e:
-            logger.exception("数据源 %s 失败（已跳过）: %s", getattr(src, "name", "?"), e)
+            logger.exception("数据源 %s 失败（已跳过该源），耗时 %.1fs：%s",
+                             name, time.monotonic() - started, e)
 
     # 1) URL/标题去重
     items = dedupe(items, key_fn=lambda i: i.item_id or norm_text(i.title))

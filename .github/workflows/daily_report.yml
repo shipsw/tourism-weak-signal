@@ -30,7 +30,7 @@ concurrency:
 jobs:
   daily-report:
     runs-on: ubuntu-latest
-    timeout-minutes: 20     # 单次流水线约 3~5 分钟，留足余量
+    timeout-minutes: 30     # 单次流水线约 3~5 分钟；每个数据源已有 120s 硬超时，留足余量
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

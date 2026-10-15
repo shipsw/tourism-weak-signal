@@ -12,11 +12,9 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 
-import feedparser
-
 from ..models import NewsItem
 from ..utils import md5
-from .base import BaseSource
+from .base import BaseSource, fetch_feed
 
 USER_AGENT = "Mozilla/5.0 (compatible; tourism-weak-signal-agent/0.1)"
 _RFC822 = "%a, %d %b %Y %H:%M:%S %Z"
@@ -67,9 +65,9 @@ class GoogleNewsSource(BaseSource):
                     f"&gl={lang.split('-')[0]}&ceid={lang}"
                 )
                 try:
-                    feed = feedparser.parse(url, agent=USER_AGENT)
-                except Exception as e:  # feedparser 通常不抛错，防御性兜底
-                    self.log.warning("google_news[%s] '%s' 解析失败: %s", lang, query, e)
+                    feed = fetch_feed(url, timeout=20, agent=USER_AGENT)
+                except Exception as e:  # 网络/解析失败：只跳过该查询
+                    self.log.warning("google_news[%s] '%s' 拉取失败: %s", lang, query, e)
                     continue
 
                 prefix = "google_news_social" if social else "google_news"

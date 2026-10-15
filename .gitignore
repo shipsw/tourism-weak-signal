@@ -18,3 +18,6 @@ venv/
 
 # GitHub Pages 构建产物（由 CI 生成）
 _site/
+
+# 手工采集数据（ TikTok / X 等 HAR 与提取结果，体积大，不入库）
+2026年10月13日数据采集/

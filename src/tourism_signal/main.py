@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import socket
 import sys
 from pathlib import Path
 
@@ -49,6 +50,10 @@ def main():
     parser.add_argument("--stage", choices=list(STAGE_NODES), default=None, help="仅运行单个节点（调试）")
     parser.add_argument("--no-store", action="store_true", help="不写入 SQLite")
     args = parser.parse_args()
+
+    # 全局兜底：任何未显式设超时的网络调用（含第三方库内部）最多阻塞 30s，
+    # 避免单个请求挂死导致整条 CI 流水线跑满 timeout 被杀。
+    socket.setdefaulttimeout(30)
 
     cfg = Config(args.config)
     logger = setup_logging(cfg.output["log_dir"])

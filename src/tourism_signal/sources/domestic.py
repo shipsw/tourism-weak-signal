@@ -5,11 +5,9 @@ MVP 阶段通过 config.yaml 中 domestic.feeds 配置可用 RSS 源接入。
 """
 from __future__ import annotations
 
-import feedparser
-
 from ..models import NewsItem
 from ..utils import md5
-from .base import BaseSource
+from .base import BaseSource, fetch_feed
 
 USER_AGENT = "Mozilla/5.0 (compatible; tourism-weak-signal-agent/0.1)"
 
@@ -27,9 +25,9 @@ class RSSSource(BaseSource):
             if not url:
                 continue
             try:
-                feed = feedparser.parse(url, agent=USER_AGENT)
+                feed = fetch_feed(url, timeout=20, agent=USER_AGENT)
             except Exception as e:
-                self.log.warning("rss '%s' 解析失败: %s", name, e)
+                self.log.warning("rss '%s' 拉取失败: %s", name, e)
                 continue
             fetched = []
             for e in feed.entries[: int(f.get("max", 30))]:
