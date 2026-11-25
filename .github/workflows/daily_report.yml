@@ -109,33 +109,39 @@ jobs:
         with:
           path: "_site"
 
-      # deploy-pages 在 upload 刚结束时就查本 run 的工件，会偶发读到空列表
-      # （工件服务读副本短暂滞后，上游 known issue actions/deploy-pages#451）。
-      # 这里先轮询到 github-pages 工件可见再部署，避免误报“No artifacts found”。
+      # 上游 known issue actions/deploy-pages#451：upload 刚结束时 deploy 去查本 run 的
+      # 工件，会偶发读到空列表（工件服务读副本短暂滞后）。
+      # 本步骤为“尽力而为”：任何异常（无权限/工具缺失/接口报错）只告警并继续，
+      # 不阻断部署；真正的兼底是后面的部署重试。
       - name: 等待 Pages 工件索引就绪
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          for i in $(seq 1 20); do
-            n=$(curl -s \
-                  -H "Authorization: Bearer $GH_TOKEN" \
-                  -H "Accept: application/vnd.github+json" \
-                  "${{ github.api_url }}/repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts" \
-                | python3 -c "import json,sys; d=json.load(sys.stdin); print(sum(1 for a in d.get('artifacts',[]) if a.get('name')=='github-pages'))" 2>/dev/null || echo 0)
-            if [ "${n:-0}" -gt 0 ]; then
+          api="${{ github.api_url }}/repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts"
+          for i in $(seq 1 15); do
+            n=$(gh api "$api" --jq '[.artifacts[] | select(.name=="github-pages")] | length' 2>/dev/null) || n=""
+            case "$n" in
+              ''|*[!0-9]*)
+                echo "::warning::查询工件接口失败（gh 不可用或无 actions:read 权限），跳过等待直接部署"
+                exit 0 ;;
+            esac
+            if [ "$n" -gt 0 ]; then
               echo "工件 github-pages 已可见（第 $i 次检查）"
               exit 0
             fi
             echo "第 $i 次检查：工件尚未可见，等待 3s"
             sleep 3
           done
-          echo "::error::等待 github-pages 工件可见超时（60s），取消部署"
-          exit 1
+          echo "::warning::等待 45s 仍未查到 github-pages 工件，继续尝试部署（部署自带重试）"
 
       - name: 部署到 GitHub Pages
         id: deployment
         continue-on-error: true      # 允许重试；真实结果见 outcome
         uses: actions/deploy-pages@v4
+
+      - name: 等待工件索引同步
+        if: steps.deployment.outcome == 'failure'
+        run: sleep 20
 
       - name: 部署到 GitHub Pages（重试）
         id: deployment_retry
