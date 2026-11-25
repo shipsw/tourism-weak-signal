@@ -61,7 +61,15 @@ class LLMClient:
             resp = httpx.post(url, json=payload, headers=headers, timeout=self.timeout)
 
         if resp.status_code != 200:
-            raise RuntimeError(f"LLM 返回 {resp.status_code}: {resp.text[:300]}")
+            body = resp.text[:300]
+            # 402 / insufficient_balance = 账户欠费，给出可操作提示（非代码 bug）
+            low = body.lower()
+            if resp.status_code == 402 or "insufficient_balance" in low or "insufficient balance" in low:
+                raise RuntimeError(
+                    f"LLM 账户余额不足（{resp.status_code}）: {body}\n"
+                    "→ 请充值后重试（检查 .env / Secrets 中 LLM_BASE_URL 对应服务商的账户余额）"
+                )
+            raise RuntimeError(f"LLM 返回 {resp.status_code}: {body}")
 
         data = resp.json()
         usage = data.get("usage") or {}
