@@ -22,6 +22,7 @@ permissions:
   contents: write           # 允许提交日报回仓库
   pages: write              # 部署 GitHub Pages（网页版日报）
   id-token: write           # Pages 部署所需 OIDC
+  actions: read             # 轮询本 run 的工件索引（规避 deploy-pages 竞态）
 
 concurrency:
   group: daily-report
@@ -33,7 +34,7 @@ jobs:
     timeout-minutes: 30     # 单次流水线约 3~5 分钟；每个数据源已有 120s 硬超时，留足余量
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: ${{ steps.deployment.outputs.page_url || steps.deployment_retry.outputs.page_url }}
     env:
       LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}
       LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
@@ -108,9 +109,44 @@ jobs:
         with:
           path: "_site"
 
+      # deploy-pages 在 upload 刚结束时就查本 run 的工件，会偶发读到空列表
+      # （工件服务读副本短暂滞后，上游 known issue actions/deploy-pages#451）。
+      # 这里先轮询到 github-pages 工件可见再部署，避免误报“No artifacts found”。
+      - name: 等待 Pages 工件索引就绪
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for i in $(seq 1 20); do
+            n=$(curl -s \
+                  -H "Authorization: Bearer $GH_TOKEN" \
+                  -H "Accept: application/vnd.github+json" \
+                  "${{ github.api_url }}/repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts" \
+                | python3 -c "import json,sys; d=json.load(sys.stdin); print(sum(1 for a in d.get('artifacts',[]) if a.get('name')=='github-pages'))" 2>/dev/null || echo 0)
+            if [ "${n:-0}" -gt 0 ]; then
+              echo "工件 github-pages 已可见（第 $i 次检查）"
+              exit 0
+            fi
+            echo "第 $i 次检查：工件尚未可见，等待 3s"
+            sleep 3
+          done
+          echo "::error::等待 github-pages 工件可见超时（60s），取消部署"
+          exit 1
+
       - name: 部署到 GitHub Pages
         id: deployment
+        continue-on-error: true      # 允许重试；真实结果见 outcome
         uses: actions/deploy-pages@v4
+
+      - name: 部署到 GitHub Pages（重试）
+        id: deployment_retry
+        if: steps.deployment.outcome == 'failure'
+        uses: actions/deploy-pages@v4
+
+      - name: 部署失败时明确报错
+        if: steps.deployment.outcome == 'failure' && steps.deployment_retry.outcome == 'failure'
+        run: |
+          echo "::error::Pages 部署两次均失败（日报数据已提交，仅网页未更新）"
+          exit 1
 
       - name: 失败时输出日志尾部（便于排查）
         if: failure()
